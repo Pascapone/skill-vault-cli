@@ -119,6 +119,21 @@ class Vault:
 
         self.repo.create_remote(remote_name, remote_url)
 
+    def remove_remote(self, remote_name: str = "origin") -> bool:
+        """Remove a configured remote.
+
+        Returns:
+            True if a remote was removed, False if it did not exist.
+        """
+        if not self.repo:
+            raise ValueError("Vault repository not initialized")
+
+        if not self.has_remote(remote_name):
+            return False
+
+        self.repo.delete_remote(self.repo.remote(name=remote_name))
+        return True
+
     def get_current_branch(self) -> Optional[str]:
         """Get current local branch name."""
         if not self.repo:

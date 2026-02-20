@@ -170,6 +170,12 @@ skill-vault vault repo create --name my-skill-vault --private
 
 # Enable automatic remote pushes after vault commits
 skill-vault vault repo auto-push on
+
+# Pull updates pushed from another machine
+skill-vault vault repo pull
+
+# Disconnect current remote
+skill-vault vault repo disconnect
 ```
 
 ## Commands Reference
@@ -189,7 +195,9 @@ skill-vault vault setup-global                  # Create global junctions
 skill-vault vault sync-global                   # Sync global junctions
 skill-vault vault repo status                   # Show vault git/remote status
 skill-vault vault repo connect --url <ssh-url>  # Connect/update remote
+skill-vault vault repo disconnect               # Disconnect configured remote
 skill-vault vault repo create --name <name>     # Create GitHub repo via gh
+skill-vault vault repo pull                     # Pull latest from configured remote
 skill-vault vault repo auto-push on|off         # Toggle auto-push
 ```
 
@@ -415,7 +423,9 @@ You can fully manage remote integration from the CLI:
 ```bash
 skill-vault vault repo status
 skill-vault vault repo connect --url <ssh-repo-url>
+skill-vault vault repo disconnect
 skill-vault vault repo create --name <repo-name> --private
+skill-vault vault repo pull
 skill-vault vault repo auto-push on
 ```
 

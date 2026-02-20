@@ -82,8 +82,14 @@ Nach Setup auf Rechner A reichen auf Rechner B:
 ```bash
 skill-vault vault init --path ~/.skill-vault
 skill-vault vault repo connect --url git@github.com:<you>/<repo>.git
-skill-vault pull
+skill-vault vault repo pull
 skill-vault vault sync-global
+```
+
+Remote spaeter trennen:
+
+```bash
+skill-vault vault repo disconnect
 ```
 
 ## Troubleshooting (kurz)

@@ -122,6 +122,19 @@ def update_vault_settings(**updates: Any) -> dict[str, Any]:
     return vault_cfg
 
 
+def clear_vault_settings(*keys: str) -> dict[str, Any]:
+    """Clear selected vault settings by setting them to None."""
+    cfg = load_global_config()
+    vault_cfg = cfg.get("vault", {})
+
+    for key in keys:
+        vault_cfg[key] = None
+
+    cfg["vault"] = vault_cfg
+    save_global_config(cfg)
+    return vault_cfg
+
+
 def get_vault_path() -> Path:
     """Get the vault path from config or default."""
     settings = get_vault_settings()
@@ -170,6 +183,36 @@ def ensure_vault_repo_initialized(vault: Vault) -> bool:
         return True
     console.print("[red]Vault not initialized. Run 'skill-vault vault init' first.[/red]")
     return False
+
+
+def pull_vault_remote(
+    vault: Vault,
+    remote_name: str,
+    branch: Optional[str] = None,
+    sync_global: bool = True
+) -> bool:
+    """Pull from configured remote and refresh global junctions."""
+    if not vault.has_remote(remote_name):
+        console.print(
+            f"[red]Remote '{remote_name}' not configured. Use 'skill-vault vault repo connect --url ...' first.[/red]"
+        )
+        return False
+
+    pulled_branch = vault.pull(remote_name=remote_name, branch=branch)
+    current_url = vault.get_remote_url(remote_name)
+    update_vault_settings(
+        remote_name=remote_name,
+        repo_url=current_url,
+        branch=pulled_branch
+    )
+    console.print(f"[green]+[/green] Pulled latest changes from {remote_name}/{pulled_branch}")
+
+    if sync_global:
+        console.print("[blue]Updating global junctions...[/blue]")
+        config = Config(get_vault_path())
+        sync_global_junctions(vault, config)
+
+    return True
 
 
 def get_vault() -> Vault:
@@ -416,6 +459,79 @@ def vault_repo_connect(url, remote, branch, push, set_auto_push):
             console.print(f"[green]+[/green] Pushed {remote_name}/{pushed_branch} (including tags)")
         except Exception as e:
             console.print(f"[red]Failed to push: {e}[/red]")
+
+
+@vault_repo.command(name='disconnect')
+@click.option('--remote', default=None, help='Remote name to disconnect (default: configured remote)')
+@click.option(
+    '--keep-auto-push',
+    is_flag=True,
+    help='Keep auto-push enabled even when no remotes remain'
+)
+def vault_repo_disconnect(remote, keep_auto_push):
+    """Disconnect a remote from the vault repository."""
+    vault = get_vault()
+    if not ensure_vault_repo_initialized(vault):
+        return
+
+    remote_name = get_effective_remote_name(remote)
+    removed = vault.remove_remote(remote_name=remote_name)
+    if not removed:
+        console.print(f"[yellow]Remote '{remote_name}' is not configured.[/yellow]")
+        return
+
+    console.print(f"[green]+[/green] Disconnected remote: {remote_name}")
+
+    settings = get_vault_settings()
+    configured_remote = settings.get("remote_name", "origin")
+    if remote_name != configured_remote:
+        return
+
+    remaining_remotes = vault.list_remotes()
+    if remaining_remotes:
+        next_remote, next_url = next(iter(remaining_remotes.items()))
+        update_vault_settings(remote_name=next_remote, repo_url=next_url)
+        console.print(
+            f"[yellow]![/yellow] Switched configured remote to {next_remote} -> {next_url or '(no url)'}"
+        )
+        return
+
+    clear_vault_settings("repo_url", "branch")
+    if keep_auto_push:
+        console.print(
+            "[yellow]![/yellow] No remotes remain. Auto-push stayed enabled due to --keep-auto-push."
+        )
+    else:
+        update_vault_settings(auto_push=False)
+        console.print("[yellow]![/yellow] Auto-push disabled because no remote is configured.")
+
+
+@vault_repo.command(name='pull')
+@click.option('--remote', default=None, help='Remote name (default: configured remote)')
+@click.option('--branch', default=None, help='Branch to pull (default: configured/current)')
+@click.option(
+    '--sync-global/--no-sync-global',
+    default=True,
+    show_default=True,
+    help='Sync global junctions after pulling'
+)
+def vault_repo_pull(remote, branch, sync_global):
+    """Pull latest changes from configured remote."""
+    vault = get_vault()
+    if not ensure_vault_repo_initialized(vault):
+        return
+
+    remote_name = get_effective_remote_name(remote)
+    effective_branch = branch or get_vault_branch()
+    try:
+        pull_vault_remote(
+            vault,
+            remote_name=remote_name,
+            branch=effective_branch,
+            sync_global=sync_global
+        )
+    except Exception as e:
+        console.print(f"[red]Failed to pull: {e}[/red]")
 
 
 @vault_repo.command(name='create')
@@ -1018,21 +1134,9 @@ def pull_cmd():
 
     remote_name = get_effective_remote_name()
     branch = get_vault_branch()
-    if not vault.has_remote(remote_name):
-        console.print(
-            f"[red]Remote '{remote_name}' not configured. Use 'skill-vault vault repo connect --url ...' first.[/red]"
-        )
-        return
 
     try:
-        pulled_branch = vault.pull(remote_name=remote_name, branch=branch)
-        update_vault_settings(branch=pulled_branch)
-        console.print(f"[green]+[/green] Pulled latest changes from {remote_name}/{pulled_branch}")
-        
-        # Re-sync global junctions after pull
-        console.print("[blue]Updating global junctions...[/blue]")
-        config = Config(get_vault_path())
-        sync_global_junctions(vault, config)
+        pull_vault_remote(vault, remote_name=remote_name, branch=branch, sync_global=True)
     except Exception as e:
         console.print(f"[red]Failed to pull: {e}[/red]")
 
