@@ -172,6 +172,10 @@ def get_effective_branch(vault: Vault, remote_name: str, override: Optional[str]
 
     configured = get_vault_branch()
     if configured:
+        if vault.has_remote(remote_name) and not vault.remote_branch_exists(configured, remote_name=remote_name):
+            remote_default = vault.get_remote_default_branch(remote_name=remote_name)
+            if remote_default:
+                return remote_default
         return configured
 
     return vault.resolve_branch(remote_name=remote_name)
@@ -198,7 +202,35 @@ def pull_vault_remote(
         )
         return False
 
-    pulled_branch = vault.pull(remote_name=remote_name, branch=branch)
+    resolved_branch = branch
+    if not resolved_branch:
+        configured = get_vault_branch()
+        if configured:
+            resolved_branch = configured
+
+    if resolved_branch and not vault.remote_branch_exists(resolved_branch, remote_name=remote_name):
+        remote_default = vault.get_remote_default_branch(remote_name=remote_name)
+        if remote_default and remote_default != resolved_branch:
+            console.print(
+                f"[yellow]![/yellow] Remote branch '{resolved_branch}' not found. Using '{remote_default}' instead."
+            )
+            resolved_branch = remote_default
+
+    if not resolved_branch:
+        resolved_branch = vault.get_remote_default_branch(remote_name=remote_name)
+
+    if not resolved_branch:
+        resolved_branch = vault.resolve_branch(remote_name=remote_name)
+
+    current_branch = vault.get_current_branch()
+    if current_branch != resolved_branch and vault.repo:
+        if vault.has_local_branch(resolved_branch):
+            vault.repo.git.checkout(resolved_branch)
+        elif vault.remote_branch_exists(resolved_branch, remote_name=remote_name):
+            vault.repo.git.fetch(remote_name, resolved_branch)
+            vault.repo.git.checkout("-B", resolved_branch, f"{remote_name}/{resolved_branch}")
+
+    pulled_branch = vault.pull(remote_name=remote_name, branch=resolved_branch)
     current_url = vault.get_remote_url(remote_name)
     update_vault_settings(
         remote_name=remote_name,
@@ -261,7 +293,16 @@ def vault_init(path, repo, remote, branch, auto_push, setup_global):
     vault = Vault(vault_path)
     vault.initialize(remote_url=normalized_repo)
     
-    effective_branch = branch or vault.get_current_branch()
+    if branch:
+        effective_branch = branch
+    elif normalized_repo:
+        effective_branch = (
+            vault.get_remote_default_branch(remote_name=remote)
+            or vault.get_current_branch()
+        )
+    else:
+        effective_branch = vault.get_current_branch()
+
     effective_repo_url = normalized_repo or vault.get_remote_url(remote)
     update_vault_settings(
         path=str(vault_path),

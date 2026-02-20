@@ -89,6 +89,12 @@ class Vault:
             return False
         return any(remote.name == remote_name for remote in self.repo.remotes)
 
+    def has_local_branch(self, branch: str) -> bool:
+        """Check whether a local branch exists."""
+        if not self.repo:
+            return False
+        return any(head.name == branch for head in self.repo.heads)
+
     def list_remotes(self) -> dict[str, str]:
         """List configured remotes and URLs."""
         if not self.repo:
@@ -165,6 +171,18 @@ class Vault:
                 return ref.replace("refs/heads/", "", 1)
 
         return None
+
+    def remote_branch_exists(self, branch: str, remote_name: str = "origin") -> bool:
+        """Check whether a branch exists on remote."""
+        if not self.repo or not self.has_remote(remote_name):
+            return False
+
+        try:
+            output = self.repo.git.ls_remote("--heads", remote_name, branch)
+        except git.GitCommandError:
+            return False
+
+        return bool(output.strip())
 
     def resolve_branch(self, branch: Optional[str] = None, remote_name: str = "origin") -> str:
         """Resolve branch to use for network operations."""
