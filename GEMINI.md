@@ -1,0 +1,1 @@
+C:/Users/pasca/Coding/skill-vault/AGENTS.md
