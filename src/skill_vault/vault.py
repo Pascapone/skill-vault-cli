@@ -60,8 +60,12 @@ class Vault:
         gitignore = self.path / ".gitignore"
         if not gitignore.exists():
             gitignore.write_text(
-                "# Project-specific installations\nprojects/*/\n"
+                "# Project-specific installations\nprojects/*/\n\n# CLI Configuration\nconfig.yaml\n"
             )
+        else:
+            content = gitignore.read_text(encoding="utf-8")
+            if "config.yaml" not in content:
+                gitignore.write_text(content.rstrip() + "\n\n# CLI Configuration\nconfig.yaml\n", encoding="utf-8")
         
         # Create initial README
         readme = self.path / "README.md"
@@ -229,11 +233,11 @@ class Vault:
 
         return "main"
 
-    def is_clean(self) -> bool:
+    def is_clean(self, untracked_files: bool = True) -> bool:
         """Check if repository has no uncommitted changes."""
         if not self.repo:
             return True
-        return not self.repo.is_dirty(untracked_files=True)
+        return not self.repo.is_dirty(untracked_files=untracked_files)
 
     def _has_staged_changes(self) -> bool:
         """Check whether there are staged changes."""

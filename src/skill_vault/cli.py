@@ -245,7 +245,7 @@ def pull_vault_remote(
         if "refusing to merge unrelated histories" not in error_text:
             raise
 
-        if not vault.is_clean():
+        if not vault.is_clean(untracked_files=False):
             raise click.ClickException(
                 "Pull failed due to unrelated histories and local uncommitted changes. "
                 "Commit/stash first, then retry."
