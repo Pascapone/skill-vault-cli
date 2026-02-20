@@ -34,6 +34,9 @@ skill-vault vault init
 
 # Or specify custom path
 skill-vault vault init --path ~/my-vault
+
+# Optional: configure remote + auto-push at init
+skill-vault vault init --repo git@github.com:<you>/<repo>.git --auto-push
 ```
 
 ### 2. Global Skills
@@ -150,17 +153,44 @@ If you modified a skill in your project:
 skill-vault push my-skill
 ```
 
+### 10. Connect to GitHub (Vault Repository)
+
+```bash
+# See current repo state
+skill-vault vault repo status
+
+# Connect existing remote
+skill-vault vault repo connect --url git@github.com:<you>/<repo>.git --push
+
+# GitHub HTTPS URLs are accepted and auto-converted to SSH
+# skill-vault vault repo connect --url https://github.com/<you>/<repo>.git --push
+
+# Or create a new GitHub repo via gh CLI
+skill-vault vault repo create --name my-skill-vault --private
+
+# Enable automatic remote pushes after vault commits
+skill-vault vault repo auto-push on
+```
+
 ## Commands Reference
 
 ### Global Vault Commands
 
 ```bash
 skill-vault vault init                          # Initialize vault
+skill-vault vault init --repo <ssh-url> --auto-push # Init with remote and auto-push
 skill-vault vault init --no-setup-global        # Without global junctions
 skill-vault vault list                          # List all skills
 skill-vault vault show <skill>                  # Show skill details
+skill-vault vault create <name>                 # Promote skill from project to vault
+skill-vault vault create <name> --local         # Promote as local skill
+skill-vault vault create <name> --push          # Promote and push remote
 skill-vault vault setup-global                  # Create global junctions
 skill-vault vault sync-global                   # Sync global junctions
+skill-vault vault repo status                   # Show vault git/remote status
+skill-vault vault repo connect --url <ssh-url>  # Connect/update remote
+skill-vault vault repo create --name <name>     # Create GitHub repo via gh
+skill-vault vault repo auto-push on|off         # Toggle auto-push
 ```
 
 ### Project Commands
@@ -379,6 +409,15 @@ When you push a skill:
 1. Changes are committed to the vault
 2. A tag is created with the version from SKILL.md
 3. You can optionally push to remote
+
+You can fully manage remote integration from the CLI:
+
+```bash
+skill-vault vault repo status
+skill-vault vault repo connect --url <ssh-repo-url>
+skill-vault vault repo create --name <repo-name> --private
+skill-vault vault repo auto-push on
+```
 
 ## License
 

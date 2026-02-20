@@ -1,7 +1,6 @@
 """Synchronization logic for pulling and pushing skills."""
 
 import hashlib
-import filecmp
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -161,7 +160,10 @@ class SkillSync:
         skill_name: str, 
         frameworks: Optional[list[str]] = None,
         force: bool = False,
-        auto_commit: bool = True
+        auto_commit: bool = True,
+        auto_push: bool = False,
+        remote_name: str = "origin",
+        branch: Optional[str] = None
     ) -> bool:
         """Install a skill from vault to project.
         
@@ -174,6 +176,9 @@ class SkillSync:
             frameworks: List of frameworks to install for
             force: Force reinstall even if already installed
             auto_commit: Automatically commit to vault
+            auto_push: Automatically push committed changes to remote
+            remote_name: Remote name for pushing
+            branch: Branch to push
             
         Returns:
             True if successful
@@ -185,6 +190,7 @@ class SkillSync:
         
         # Check if already installed
         is_update = self.project.is_skill_installed(skill_name)
+        old_version = self.project.get_installed_version(skill_name) if is_update else None
         if is_update and not force:
             console.print(f"[yellow]Skill already installed: {skill_name}[/yellow]")
             console.print("Use --force to reinstall")
@@ -254,7 +260,6 @@ class SkillSync:
                 
                 # Check if this is an update (skill was already installed)
                 if is_update:
-                    old_version = self.project.get_installed_version(skill_name)
                     if old_version and old_version != skill.version:
                         commit_msg = f"[{timestamp}] Update skill: {skill_name} v{old_version} -> v{skill.version}"
                     else:
@@ -262,8 +267,17 @@ class SkillSync:
                 else:
                     commit_msg = f"[{timestamp}] Install skill: {skill_name} v{skill.version}"
                 
-                self.vault.commit_all_changes(commit_msg)
-                console.print(f"[dim]-> Auto-committed: {commit_msg}[/dim]")
+                commit_hash = self.vault.commit_all_changes(commit_msg)
+                if commit_hash:
+                    console.print(f"[dim]-> Auto-committed: {commit_msg}[/dim]")
+                    if auto_push:
+                        try:
+                            pushed_branch = self.vault.push(remote_name=remote_name, branch=branch)
+                            console.print(
+                                f"[dim]-> Auto-pushed to {remote_name}/{pushed_branch} (including tags)[/dim]"
+                            )
+                        except Exception as push_err:
+                            console.print(f"[yellow]Warning: Failed to auto-push: {push_err}[/yellow]")
             except Exception as e:
                 console.print(f"[yellow]Warning: Failed to auto-commit: {e}[/yellow]")
         
@@ -385,12 +399,22 @@ class SkillSync:
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
     
-    def remove_skill(self, skill_name: str, auto_commit: bool = True) -> bool:
+    def remove_skill(
+        self,
+        skill_name: str,
+        auto_commit: bool = True,
+        auto_push: bool = False,
+        remote_name: str = "origin",
+        branch: Optional[str] = None
+    ) -> bool:
         """Remove a skill from the project.
         
         Args:
             skill_name: Name of the skill to remove
             auto_commit: Automatically commit to vault
+            auto_push: Automatically push committed changes to remote
+            remote_name: Remote name for pushing
+            branch: Branch to push
             
         Returns:
             True if successful
@@ -440,19 +464,38 @@ class SkillSync:
             try:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 commit_msg = f"[{timestamp}] Remove skill: {skill_name} v{version}"
-                self.vault.commit_all_changes(commit_msg)
-                console.print(f"[dim]→ Auto-committed: {commit_msg}[/dim]")
+                commit_hash = self.vault.commit_all_changes(commit_msg)
+                if commit_hash:
+                    console.print(f"[dim]-> Auto-committed: {commit_msg}[/dim]")
+                    if auto_push:
+                        try:
+                            pushed_branch = self.vault.push(remote_name=remote_name, branch=branch)
+                            console.print(
+                                f"[dim]-> Auto-pushed to {remote_name}/{pushed_branch} (including tags)[/dim]"
+                            )
+                        except Exception as push_err:
+                            console.print(f"[yellow]Warning: Failed to auto-push: {push_err}[/yellow]")
             except Exception as e:
                 console.print(f"[yellow]Warning: Failed to auto-commit: {e}[/yellow]")
         
         return True
     
-    def sync_updates(self, dry_run: bool = False, auto: bool = False) -> list[str]:
+    def sync_updates(
+        self,
+        dry_run: bool = False,
+        auto: bool = False,
+        auto_push: bool = False,
+        remote_name: str = "origin",
+        branch: Optional[str] = None
+    ) -> list[str]:
         """Synchronize updates from vault to project.
         
         Args:
             dry_run: Only show what would be updated
             auto: Update all without asking
+            auto_push: Automatically push committed changes to remote
+            remote_name: Remote name for pushing
+            branch: Branch to push
             
         Returns:
             List of updated skill names
@@ -490,18 +533,35 @@ class SkillSync:
         # Update all
         updated = []
         for skill, _ in updates:
-            if self.install_skill(skill.name, force=True):
+            if self.install_skill(
+                skill.name,
+                force=True,
+                auto_push=auto_push,
+                remote_name=remote_name,
+                branch=branch
+            ):
                 updated.append(skill.name)
         
         return updated
     
-    def push_skill(self, skill_name: str, message: str, author: str = "User") -> bool:
+    def push_skill(
+        self,
+        skill_name: str,
+        message: str,
+        author: str = "User",
+        auto_push: bool = False,
+        remote_name: str = "origin",
+        branch: Optional[str] = None
+    ) -> bool:
         """Push a local skill to the vault.
         
         Args:
             skill_name: Name of the skill
             message: Commit message
             author: Author name
+            auto_push: Automatically push committed changes to remote
+            remote_name: Remote name for pushing
+            branch: Branch to push
             
         Returns:
             True if successful
@@ -557,9 +617,12 @@ class SkillSync:
             tag = self.vault.commit_skill(skill_name, message, author)
             console.print(f"[green]+[/green] Committed skill: {skill_name}")
             console.print(f"[green]+[/green] Created tag: {tag}")
-            
-            # Ask if push to remote
-            console.print(f"[blue]Push to remote?[/blue]")
+
+            if auto_push:
+                pushed_branch = self.vault.push(remote_name=remote_name, branch=branch)
+                console.print(
+                    f"[green]+[/green] Pushed to remote: {remote_name}/{pushed_branch} (including tags)"
+                )
             return True
         except Exception as e:
             console.print(f"[red]x Failed to commit: {e}[/red]")
@@ -644,7 +707,10 @@ class SkillSync:
         skill_name: str,
         is_global: bool = True,
         message: Optional[str] = None,
-        author: str = "User"
+        author: str = "User",
+        auto_push: bool = False,
+        remote_name: str = "origin",
+        branch: Optional[str] = None
     ) -> bool:
         """Promote a skill from the project to the vault.
         
@@ -656,6 +722,9 @@ class SkillSync:
             is_global: If True, add to global skills; if False, add to local skills
             message: Commit message (auto-generated if not provided)
             author: Author name for commit
+            auto_push: Automatically push committed changes to remote
+            remote_name: Remote name for pushing
+            branch: Branch to push
             
         Returns:
             True if successful
@@ -713,8 +782,17 @@ class SkillSync:
         # Commit to vault
         try:
             commit_msg = message or f"Add {skill_type} skill: {actual_skill_name} v{skill.version}"
-            self.vault.commit_all_changes(commit_msg)
-            console.print(f"[green]+[/green] Committed to vault: {commit_msg}")
+            commit_hash = self.vault.commit_all_changes(commit_msg)
+            if commit_hash:
+                console.print(f"[green]+[/green] Committed to vault: {commit_msg}")
+                if auto_push:
+                    try:
+                        pushed_branch = self.vault.push(remote_name=remote_name, branch=branch)
+                        console.print(
+                            f"[green]+[/green] Pushed to remote: {remote_name}/{pushed_branch} (including tags)"
+                        )
+                    except Exception as push_err:
+                        console.print(f"[yellow]Warning: Failed to auto-push: {push_err}[/yellow]")
         except Exception as e:
             console.print(f"[yellow]Warning: Failed to commit: {e}[/yellow]")
         

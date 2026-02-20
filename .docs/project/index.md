@@ -13,6 +13,7 @@ Skill Vault provides a centralized system for creating, versioning, and distribu
 | [Architecture](architecture.md) | Module overview and system design |
 | [Commands](commands.md) | Complete CLI command reference |
 | [Creating Skills](guides/creating-skills.md) | How to create and structure skills |
+| [Vault + GitHub Quickstart](guides/vault-github-quickstart.md) | Fast setup for vault + remote sync |
 | [Workflow](guides/workflow.md) | Typical usage workflow |
 | [Windows Junctions](guides/windows-junctions.md) | Understanding junction-based linking |
 | [Configuration](reference/configuration.md) | Configuration file reference |

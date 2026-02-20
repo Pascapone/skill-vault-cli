@@ -82,6 +82,102 @@ class Vault:
         if not self.repo.head.is_valid():
             self.repo.index.add(['.gitignore', 'README.md'])
             self.repo.index.commit("Initial commit: Skill Vault setup")
+
+    def has_remote(self, remote_name: str = "origin") -> bool:
+        """Check whether a remote exists."""
+        if not self.repo:
+            return False
+        return any(remote.name == remote_name for remote in self.repo.remotes)
+
+    def list_remotes(self) -> dict[str, str]:
+        """List configured remotes and URLs."""
+        if not self.repo:
+            return {}
+        remotes: dict[str, str] = {}
+        for remote in self.repo.remotes:
+            urls = list(remote.urls)
+            remotes[remote.name] = urls[0] if urls else ""
+        return remotes
+
+    def get_remote_url(self, remote_name: str = "origin") -> Optional[str]:
+        """Get URL for a remote."""
+        if not self.repo or not self.has_remote(remote_name):
+            return None
+        remote = self.repo.remote(name=remote_name)
+        urls = list(remote.urls)
+        return urls[0] if urls else None
+
+    def set_remote(self, remote_url: str, remote_name: str = "origin", overwrite: bool = True) -> None:
+        """Create or update a remote URL."""
+        if not self.repo:
+            raise ValueError("Vault repository not initialized")
+
+        if self.has_remote(remote_name):
+            if overwrite:
+                self.repo.remote(name=remote_name).set_url(remote_url)
+            return
+
+        self.repo.create_remote(remote_name, remote_url)
+
+    def get_current_branch(self) -> Optional[str]:
+        """Get current local branch name."""
+        if not self.repo:
+            return None
+        try:
+            return self.repo.active_branch.name
+        except TypeError:
+            # Detached HEAD
+            return None
+
+    def get_remote_default_branch(self, remote_name: str = "origin") -> Optional[str]:
+        """Resolve the default branch of a remote, if available."""
+        if not self.repo or not self.has_remote(remote_name):
+            return None
+
+        try:
+            output = self.repo.git.ls_remote("--symref", remote_name, "HEAD")
+        except git.GitCommandError:
+            return None
+
+        for line in output.splitlines():
+            if not line.startswith("ref: "):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            ref = parts[1]
+            if ref.startswith("refs/heads/"):
+                return ref.replace("refs/heads/", "", 1)
+
+        return None
+
+    def resolve_branch(self, branch: Optional[str] = None, remote_name: str = "origin") -> str:
+        """Resolve branch to use for network operations."""
+        if branch:
+            return branch
+
+        current = self.get_current_branch()
+        if current:
+            return current
+
+        remote_default = self.get_remote_default_branch(remote_name=remote_name)
+        if remote_default:
+            return remote_default
+
+        return "main"
+
+    def is_clean(self) -> bool:
+        """Check if repository has no uncommitted changes."""
+        if not self.repo:
+            return True
+        return not self.repo.is_dirty(untracked_files=True)
+
+    def _has_staged_changes(self) -> bool:
+        """Check whether there are staged changes."""
+        if not self.repo:
+            return False
+        staged = self.repo.git.diff("--cached", "--name-only")
+        return bool(staged.strip())
     
     def list_global_skills(self) -> list[Skill]:
         """List all global skills in the vault."""
@@ -134,11 +230,12 @@ class Vault:
         if not skill:
             raise ValueError(f"Skill not found: {skill_name}")
         
-        # Stage all files in the skill directory
-        skill_files = skill.get_files()
-        for file_path in skill_files:
-            relative_path = file_path.relative_to(self.path)
-            self.repo.index.add([str(relative_path)])
+        # Stage all changes in the skill directory (including deletions)
+        skill_relative = skill.path.relative_to(self.path)
+        self.repo.git.add("-A", str(skill_relative))
+
+        if not self._has_staged_changes():
+            raise ValueError(f"No changes to commit for skill: {skill_name}")
         
         # Create commit
         commit_message = f"{skill_name}: {message}"
@@ -149,7 +246,12 @@ class Vault:
         
         # Create tag
         tag_name = f"{skill_name}@v{skill.version}"
-        self.repo.create_tag(tag_name)
+        try:
+            self.repo.create_tag(tag_name)
+        except git.GitCommandError:
+            # Update existing tag if version is reused
+            self.repo.delete_tag(tag_name)
+            self.repo.create_tag(tag_name)
         
         return tag_name
     
@@ -173,7 +275,7 @@ class Vault:
         self.repo.git.add('-A')
         
         # Check if there are changes to commit
-        if not self.repo.index.diff("HEAD") and not self.repo.untracked_files:
+        if not self._has_staged_changes():
             return ""
         
         # Create commit
@@ -184,16 +286,33 @@ class Vault:
         
         return str(commit.hexsha)
     
-    def push(self, remote_name: str = "origin") -> None:
+    def push(self, remote_name: str = "origin", branch: Optional[str] = None, set_upstream: bool = True) -> str:
         """Push commits and tags to remote."""
-        remote = self.repo.remote(name=remote_name)
-        remote.push()
-        remote.push(tags=True)
+        if not self.repo:
+            raise ValueError("Vault repository not initialized")
+        if not self.has_remote(remote_name):
+            raise ValueError(f"Remote not found: {remote_name}")
+
+        resolved_branch = self.resolve_branch(branch=branch, remote_name=remote_name)
+
+        if set_upstream:
+            self.repo.git.push("--set-upstream", remote_name, f"{resolved_branch}:{resolved_branch}")
+        else:
+            self.repo.git.push(remote_name, f"{resolved_branch}:{resolved_branch}")
+
+        self.repo.git.push(remote_name, "--tags")
+        return resolved_branch
     
-    def pull(self, remote_name: str = "origin", branch: str = "main") -> None:
+    def pull(self, remote_name: str = "origin", branch: Optional[str] = None) -> str:
         """Pull latest changes from remote."""
-        remote = self.repo.remote(name=remote_name)
-        remote.pull(branch)
+        if not self.repo:
+            raise ValueError("Vault repository not initialized")
+        if not self.has_remote(remote_name):
+            raise ValueError(f"Remote not found: {remote_name}")
+
+        resolved_branch = self.resolve_branch(branch=branch, remote_name=remote_name)
+        self.repo.git.pull(remote_name, resolved_branch)
+        return resolved_branch
     
     def get_skill_diff(self, skill_name: str) -> str:
         """Get the git diff for a skill."""
