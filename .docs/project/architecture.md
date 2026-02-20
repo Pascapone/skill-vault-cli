@@ -44,6 +44,7 @@ Command-line interface entry point. Defines all commands using Click decorators.
 
 **Key Commands:**
 - `vault init`, `vault list`, `vault show`, `vault create`
+- `vault repo connect`, `vault repo create`, `vault repo disconnect`, `vault repo pull`, `vault repo status`
 - `project init`, `project status`
 - `skills list`, `skills add`, `skills remove`, `skills diff`
 - `sync`, `push`, `pull`
@@ -77,7 +78,8 @@ Git-integrated vault management.
 - `list_global_skills()`, `list_local_skills()`: List available skills
 - `get_skill()`: Retrieve skill by name
 - `commit_skill()`: Commit and tag a skill version
-- `push()`, `pull()`: Sync with remote
+- `push()`, `pull()`: Sync with remote branches
+- `set_remote()`, `remove_remote()`: Manage remote repository connections
 
 ### skills.py
 

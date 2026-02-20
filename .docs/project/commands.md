@@ -69,6 +69,19 @@ Synchronize global junctions - add new and remove obsolete.
 skill-vault vault sync-global
 ```
 
+### vault repo
+
+Manage the remote repository connection for the vault.
+
+```bash
+skill-vault vault repo status                   # Show vault git/remote status
+skill-vault vault repo connect --url <ssh-url>  # Connect/update remote
+skill-vault vault repo disconnect               # Disconnect configured remote
+skill-vault vault repo create --name <name>     # Create GitHub repo via gh CLI
+skill-vault vault repo pull                     # Pull latest from configured remote
+skill-vault vault repo auto-push on|off         # Toggle auto-push behavior
+```
+
 ---
 
 ## Project Commands

@@ -12,6 +12,14 @@ A tool for managing Agent Skills across different AI frameworks (OpenCode, Claud
 - **Auto-Detection**: Automatically detects which AI frameworks are used in your project
 - **Framework Editing**: Update project frameworks later with interactive select/deselect
 
+## Documentation
+
+For comprehensive information about Skill Vault's architecture, CLI commands, and usage guides, please refer to the [`.docs/project/`](.docs/project/index.md) directory:
+- [Architecture](.docs/project/architecture.md)
+- [CLI Commands Reference](.docs/project/commands.md)
+- [Creating Skills](.docs/project/guides/creating-skills.md)
+- [Vault + GitHub Quickstart](.docs/project/guides/vault-github-quickstart.md)
+
 ## Installation
 
 ```bash
