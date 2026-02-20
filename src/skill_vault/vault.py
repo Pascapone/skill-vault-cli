@@ -45,6 +45,8 @@ class Vault:
     
     def initialize(self, remote_url: Optional[str] = None) -> None:
         """Initialize a new Vault repository."""
+        repo_was_created = False
+
         # Create directory structure
         self.global_skills_dir.mkdir(parents=True, exist_ok=True)
         self.local_skills_dir.mkdir(parents=True, exist_ok=True)
@@ -52,6 +54,7 @@ class Vault:
         # Initialize Git repository
         if not self.repo:
             self.repo = git.Repo.init(self.path)
+            repo_was_created = True
         
         # Create .gitignore
         gitignore = self.path / ".gitignore"
@@ -82,6 +85,13 @@ class Vault:
         if not self.repo.head.is_valid():
             self.repo.index.add(['.gitignore', 'README.md'])
             self.repo.index.commit("Initial commit: Skill Vault setup")
+
+            # Enforce modern default branch for newly created vault repos.
+            if repo_was_created:
+                try:
+                    self.repo.git.branch("-M", "main")
+                except git.GitCommandError:
+                    pass
 
     def has_remote(self, remote_name: str = "origin") -> bool:
         """Check whether a remote exists."""
@@ -139,6 +149,26 @@ class Vault:
 
         self.repo.delete_remote(self.repo.remote(name=remote_name))
         return True
+
+    def checkout_remote_branch(self, remote_name: str, branch: str) -> None:
+        """Reset local branch to the exact remote branch state."""
+        if not self.repo:
+            raise ValueError("Vault repository not initialized")
+        if not self.has_remote(remote_name):
+            raise ValueError(f"Remote not found: {remote_name}")
+
+        self.repo.git.fetch(remote_name, branch)
+        self.repo.git.checkout("-B", branch, f"{remote_name}/{branch}")
+
+    def is_bootstrap_history(self) -> bool:
+        """Whether repository still has only the local bootstrap commit."""
+        if not self.repo or not self.repo.head.is_valid():
+            return False
+
+        commits = list(self.repo.iter_commits(max_count=2))
+        if len(commits) != 1:
+            return False
+        return commits[0].message.strip() == "Initial commit: Skill Vault setup"
 
     def get_current_branch(self) -> Optional[str]:
         """Get current local branch name."""

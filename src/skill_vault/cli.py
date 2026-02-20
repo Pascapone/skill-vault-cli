@@ -84,11 +84,19 @@ def load_global_config() -> dict[str, Any]:
     else:
         auto_push_value = bool(auto_push_raw)
 
+    branch_raw = vault_cfg.get("branch")
+    if isinstance(branch_raw, str):
+        branch_value = branch_raw.strip() or "main"
+    elif branch_raw is None:
+        branch_value = "main"
+    else:
+        branch_value = str(branch_raw)
+
     data["vault"] = {
         "path": vault_cfg.get("path", default_path),
         "repo_url": vault_cfg.get("repo_url"),
         "remote_name": vault_cfg.get("remote_name", "origin"),
-        "branch": vault_cfg.get("branch"),
+        "branch": branch_value,
         "auto_push": auto_push_value,
     }
     return data
@@ -151,7 +159,7 @@ def get_vault_branch() -> Optional[str]:
     """Get configured branch for vault operations."""
     settings = get_vault_settings()
     branch = settings.get("branch")
-    return branch if branch else None
+    return branch if branch else "main"
 
 
 def get_auto_push_enabled() -> bool:
@@ -230,7 +238,33 @@ def pull_vault_remote(
             vault.repo.git.fetch(remote_name, resolved_branch)
             vault.repo.git.checkout("-B", resolved_branch, f"{remote_name}/{resolved_branch}")
 
-    pulled_branch = vault.pull(remote_name=remote_name, branch=resolved_branch)
+    try:
+        pulled_branch = vault.pull(remote_name=remote_name, branch=resolved_branch)
+    except Exception as e:
+        error_text = str(e)
+        if "refusing to merge unrelated histories" not in error_text:
+            raise
+
+        if not vault.is_clean():
+            raise click.ClickException(
+                "Pull failed due to unrelated histories and local uncommitted changes. "
+                "Commit/stash first, then retry."
+            )
+
+        if not vault.is_bootstrap_history():
+            raise click.ClickException(
+                "Pull failed due to unrelated histories. "
+                "This repository already has its own commit history. "
+                "Merge manually or recreate the local vault clone."
+            )
+
+        console.print(
+            "[yellow]![/yellow] Local bootstrap history differs from remote. "
+            "Re-aligning local branch to remote."
+        )
+        vault.checkout_remote_branch(remote_name=remote_name, branch=resolved_branch)
+        pulled_branch = resolved_branch
+
     current_url = vault.get_remote_url(remote_name)
     update_vault_settings(
         remote_name=remote_name,
@@ -276,7 +310,7 @@ def vault():
 @click.option('--path', '-p', default=None, help='Path for the vault (default: ~/.skill-vault)')
 @click.option('--repo', '-r', default=None, help='Remote repository URL')
 @click.option('--remote', default="origin", show_default=True, help='Remote name')
-@click.option('--branch', default=None, help='Preferred branch for pull/push (defaults to active branch)')
+@click.option('--branch', default=None, help='Preferred branch for pull/push (default: main)')
 @click.option('--auto-push/--no-auto-push', default=False, help='Auto-push vault commits to remote')
 @click.option('--setup-global/--no-setup-global', default=True, help='Setup global junctions after init')
 def vault_init(path, repo, remote, branch, auto_push, setup_global):
@@ -296,12 +330,19 @@ def vault_init(path, repo, remote, branch, auto_push, setup_global):
     if branch:
         effective_branch = branch
     elif normalized_repo:
-        effective_branch = (
-            vault.get_remote_default_branch(remote_name=remote)
-            or vault.get_current_branch()
-        )
+        effective_branch = vault.get_remote_default_branch(remote_name=remote) or "main"
     else:
-        effective_branch = vault.get_current_branch()
+        effective_branch = "main"
+
+    current_branch = vault.get_current_branch()
+    if vault.repo and current_branch != effective_branch:
+        try:
+            if vault.has_local_branch(effective_branch):
+                vault.repo.git.checkout(effective_branch)
+            elif current_branch == "master" and effective_branch == "main":
+                vault.repo.git.branch("-M", "main")
+        except Exception:
+            pass
 
     effective_repo_url = normalized_repo or vault.get_remote_url(remote)
     update_vault_settings(

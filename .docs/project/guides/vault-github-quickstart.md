@@ -20,6 +20,8 @@ Optional direkt mit Remote + Auto-Push:
 skill-vault vault init --repo git@github.com:<you>/<repo>.git --auto-push
 ```
 
+Default-Branch ist `main` (optional ueberschreibbar mit `--branch <name>`).
+
 ## 2. Remote-Status pruefen
 
 ```bash

@@ -45,6 +45,9 @@ skill-vault vault init --path ~/my-vault
 
 # Optional: configure remote + auto-push at init
 skill-vault vault init --repo git@github.com:<you>/<repo>.git --auto-push
+
+# Default branch is main (override if needed)
+skill-vault vault init --repo git@github.com:<you>/<repo>.git --branch main
 ```
 
 ### 2. Global Skills
