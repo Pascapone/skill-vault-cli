@@ -1,0 +1,24 @@
+Kurzer Guide: UAC Elevation in Windows
+Grundkonzept
+Windows UAC erlaubt es, Programme nicht-elevated zu starten und bei Bedarf nachträglich Admin-Rechte anzufordern.
+Methode 1: PowerShell Start-Process -Verb RunAs
+Start-Process powershell.exe -Verb RunAs -ArgumentList "-Command 'Dein-Befehl'"
+→ Öffnet UAC-Prompt → bei Bestätigung: elevated Sitzung
+Methode 2: runas (anderer User)
+runas /user:Administrator "mein-befehl.exe"
+→ Fragt Passwort ab (nicht UAC-basiert)
+Methode 3: Python (wie in der CLI)
+import subprocess
+def elevate_command(cmd):
+    ps = f'Start-Process cmd.exe -Verb RunAs -ArgumentList "/c {cmd}"'
+    subprocess.run(['powershell', '-Command', ps])
+Wichtig zu wissen
+- UAC-Prompt kann nicht unterdrückt werden - Security by Design
+- Nach Bestätigung läuft der neue Prozess mit vollen Admin-Rechten
+- Funktioniert nur, wenn der User in der Administrator-Gruppe ist
+Praktisches Beispiel (direkt im Terminal)
+# Normale PowerShell (eingeschränkt)
+whoami  # zeigt aktuellen User
+# Elevated PowerShell (Admin)
+Start-Process powershell.exe -Verb RunAs
+# Dann: whoami → zeigt "NT AUTHORITY\SYSTEM" oder-admin

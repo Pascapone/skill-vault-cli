@@ -1279,9 +1279,17 @@ def framework_edit():
     if removed:
         console.print(f"[yellow]-[/yellow] Removed: {', '.join(removed)}")
 
+    # Automatically set up junctions so the new framework sees existing skills
+    if added:
+        vault = get_vault()
+        sync = SkillSync(vault, proj, config)
+        console.print("[blue]Setting up framework junctions for new frameworks...[/blue]")
+        sync.ensure_framework_junctions(selected)
+        console.print("[green]+[/green] Junctions updated — new framework can see all existing skills")
+
     if proj.config.installed_skills:
         console.print(
-            "[dim]Note: Installed skills keep their current framework assignments until reinstalled or synced manually.[/dim]"
+            "[dim]Note: Skill records in installed.json still list old frameworks. Run 'skills add <name> --force' to update them.[/dim]"
         )
 
 
