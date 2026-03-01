@@ -13,7 +13,6 @@ frameworks:
   <key>:
     name: "Display Name"
     local_path: ".framework/skills"
-    global_path: "~/.framework/skills"
     config_files: [".framework", "framework.md"]
 
 defaults:
@@ -28,7 +27,6 @@ defaults:
 |-------|----------|-------------|
 | `name` | Yes | Display name for the framework |
 | `local_path` | Yes | Skills directory within a project (relative) |
-| `global_path` | Yes | Skills directory in home directory |
 | `config_files` | No | Files that indicate framework usage (for auto-detection) |
 
 ### Defaults Fields
@@ -48,7 +46,6 @@ frameworks:
   my-framework:
     name: "My Framework"
     local_path: ".my-framework/skills"
-    global_path: "~/.my-framework/skills"
     config_files: [".my-framework", "my-framework.md"]
 ```
 
@@ -96,7 +93,6 @@ Located in `<project>/.skill-vault/installed.json`. Tracks installed skills.
     "version": "1.0.0",
     "installed_at": "2026-02-20T00:00:00.000000",
     "frameworks": ["codex", "claude"],
-    "is_local": false,
     "file_hashes": {
       "SKILL.md": "abc123def456..."
     }
@@ -111,7 +107,6 @@ Located in `<project>/.skill-vault/installed.json`. Tracks installed skills.
 | `version` | string | Installed skill version |
 | `installed_at` | string | ISO timestamp of installation |
 | `frameworks` | list | Frameworks skill is installed for |
-| `is_local` | bool | Whether skill is from local vault |
 | `file_hashes` | dict | MD5 hashes of files (for change detection) |
 
 ---

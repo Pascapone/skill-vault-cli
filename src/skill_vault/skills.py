@@ -19,7 +19,6 @@ class Skill:
     tags: list[str] = field(default_factory=list)
     frameworks: list[str] = field(default_factory=list)
     path: Optional[Path] = None
-    is_local: bool = False
     installed_at: Optional[datetime] = None
     
     @property
@@ -112,12 +111,11 @@ class SkillParser:
         return skill
     
     @staticmethod
-    def parse_all(skills_dir: Path, is_local: bool = False) -> list[Skill]:
+    def parse_all(skills_dir: Path) -> list[Skill]:
         """Parse all skills in a directory.
         
         Args:
             skills_dir: Directory containing skill directories
-            is_local: Whether these are local skills
             
         Returns:
             List of Skill objects
@@ -131,7 +129,6 @@ class SkillParser:
             if skill_dir.is_dir():
                 try:
                     skill = SkillParser.parse(skill_dir)
-                    skill.is_local = is_local
                     skills.append(skill)
                 except (FileNotFoundError, ValueError):
                     continue

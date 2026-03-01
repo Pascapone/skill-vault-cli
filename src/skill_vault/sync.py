@@ -573,10 +573,6 @@ class SkillSync:
         
         installed_info = self.project.get_installed_skills()[skill_name]
         
-        if not installed_info.get("is_local", False):
-            console.print(f"[yellow]Can only push local skills: {skill_name}[/yellow]")
-            return False
-        
         # Get the skill from project
         frameworks = installed_info.get("frameworks", [])
         if not frameworks:
@@ -602,9 +598,9 @@ class SkillSync:
             console.print(f"[red]Failed to parse skill: {e}[/red]")
             return False
         
-        # Copy to vault (for local skills in skills/local/)
+        # Copy to vault
         import shutil
-        vault_skill_path = self.vault.local_skills_dir / skill_name
+        vault_skill_path = self.vault.skills_dir / skill_name
         
         if vault_skill_path.exists():
             # Remove old version
@@ -705,7 +701,6 @@ class SkillSync:
     def promote_skill_to_vault(
         self,
         skill_name: str,
-        is_global: bool = True,
         message: Optional[str] = None,
         author: str = "User",
         auto_push: bool = False,
@@ -719,7 +714,6 @@ class SkillSync:
         
         Args:
             skill_name: Name of the skill to promote
-            is_global: If True, add to global skills; if False, add to local skills
             message: Commit message (auto-generated if not provided)
             author: Author name for commit
             auto_push: Automatically push committed changes to remote
@@ -758,12 +752,7 @@ class SkillSync:
             console.print(f"[dim]Using '{actual_skill_name}' as the skill name in vault.[/dim]")
         
         # Determine target path in vault (use skill name from SKILL.md)
-        if is_global:
-            target_path = self.vault.global_skills_dir / actual_skill_name
-            skill_type = "global"
-        else:
-            target_path = self.vault.local_skills_dir / actual_skill_name
-            skill_type = "local"
+        target_path = self.vault.skills_dir / actual_skill_name
         
         # Check if target already exists
         if target_path.exists():
@@ -774,14 +763,14 @@ class SkillSync:
         # Copy skill to vault
         try:
             shutil.copytree(source_path, target_path)
-            console.print(f"[green]+[/green] Copied skill to vault ({skill_type}): {actual_skill_name}")
+            console.print(f"[green]+[/green] Copied skill to vault: {actual_skill_name}")
         except Exception as e:
             console.print(f"[red]x Failed to copy skill: {e}[/red]")
             return False
         
         # Commit to vault
         try:
-            commit_msg = message or f"Add {skill_type} skill: {actual_skill_name} v{skill.version}"
+            commit_msg = message or f"Add skill: {actual_skill_name} v{skill.version}"
             commit_hash = self.vault.commit_all_changes(commit_msg)
             if commit_hash:
                 console.print(f"[green]+[/green] Committed to vault: {commit_msg}")
@@ -796,21 +785,11 @@ class SkillSync:
         except Exception as e:
             console.print(f"[yellow]Warning: Failed to commit: {e}[/yellow]")
         
-        # Update global junctions if global skill
-        if is_global:
-            try:
-                from .global_junctions import setup_global_junctions
-                setup_global_junctions(self.vault, self.config)
-                console.print(f"[green]+[/green] Updated global junctions")
-            except Exception as e:
-                console.print(f"[yellow]Warning: Failed to update global junctions: {e}[/yellow]")
-        
         # Track the skill in installed.json so it can be managed
         frameworks = skill_info.get("frameworks", [])
         if not frameworks and self.project.config:
             frameworks = self.project.config.enabled_frameworks
         
-        skill.is_local = not is_global  # Mark as local if added to local vault
         self.project.install_skill(skill, frameworks)
         self._save_skill_hashes(actual_skill_name, source_path)
         

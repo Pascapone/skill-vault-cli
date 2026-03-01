@@ -87,22 +87,21 @@ Links to additional files in `references/` directory:
 
 3. Promote to vault:
    ```bash
-   skill-vault vault create my-skill          # As global skill
-   skill-vault vault create my-skill --local  # As local skill
+   skill-vault vault create my-skill
    ```
 
 ### Method 2: Create Directly in Vault
 
 1. Create directory in vault:
    ```bash
-   mkdir -p ~/.skill-vault/skills/global/my-skill
+   mkdir -p ~/.skill-vault/skills/my-skill
    ```
 
 2. Create `SKILL.md` with content
 
 3. Setup global junctions:
    ```bash
-   skill-vault vault setup-global
+   skill-vault framework sync
    ```
 
 ## Best Practices

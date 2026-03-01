@@ -2,37 +2,35 @@ frameworks:
   codex:
     name: "OpenAI Codex"
     local_path: ".agents/skills"
-    global_path: "~/.agents/skills"
     config_files: [".codex", "codex.md"]
+    agent_markdown: "AGENTS.md"
     
   opencode:
     name: "OpenCode"
     local_path: ".agents/skills"
-    global_path: "~/.agents/skills"
     config_files: [".opencode"]
+    agent_markdown: "AGENTS.md"
     
   antigravity:
     name: "Antigravity (Gemini)"
     local_path: ".agent/skills"
-    global_path: "~/.gemini/antigravity/skills"
     config_files: [".gemini", "gemini.md"]
+    agent_markdown: "GEMINI.md"
     
   claude:
     name: "Claude Code"
     local_path: ".claude/skills"
-    global_path: "~/.claude/skills"
     config_files: [".claude", "CLAUDE.md"]
+    agent_markdown: "CLAUDE.md"
     
   roo:
     name: "Roo Code"
     local_path: ".roo/skills"
-    global_path: "~/.roo/skills"
     config_files: [".roo"]
     
   vscode:
     name: "VS Code"
     local_path: ".vscode/skills"
-    global_path: "~/.vscode/skills"
     config_files: [".vscode"]
 
 defaults:

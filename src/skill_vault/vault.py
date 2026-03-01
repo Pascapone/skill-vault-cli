@@ -34,8 +34,7 @@ class Vault:
     def __init__(self, vault_path: Path):
         self.path = vault_path
         self.skills_dir = vault_path / "skills"
-        self.global_skills_dir = self.skills_dir / "global"
-        self.local_skills_dir = self.skills_dir / "local"
+        self.presets_dir = vault_path / "presets"
         
         # Initialize or open Git repository
         if (vault_path / ".git").exists():
@@ -48,8 +47,7 @@ class Vault:
         repo_was_created = False
 
         # Create directory structure
-        self.global_skills_dir.mkdir(parents=True, exist_ok=True)
-        self.local_skills_dir.mkdir(parents=True, exist_ok=True)
+        self.skills_dir.mkdir(parents=True, exist_ok=True)
         
         # Initialize Git repository
         if not self.repo:
@@ -74,8 +72,7 @@ class Vault:
                 "# Skill Vault\n\n"
                 "Central repository for Agent Skills.\n\n"
                 "## Structure\n\n"
-                "- `skills/global/` - Skills available to all projects\n"
-                "- `skills/local/` - Private skill templates\n"
+                "- `skills/` - All centralized skills\n"
             )
         
         # Add remote if provided
@@ -246,31 +243,16 @@ class Vault:
         staged = self.repo.git.diff("--cached", "--name-only")
         return bool(staged.strip())
     
-    def list_global_skills(self) -> list[Skill]:
-        """List all global skills in the vault."""
-        return SkillParser.parse_all(self.global_skills_dir, is_local=False)
-    
-    def list_local_skills(self) -> list[Skill]:
-        """List all local skills in the vault."""
-        return SkillParser.parse_all(self.local_skills_dir, is_local=True)
+    def list_skills(self) -> list[Skill]:
+        """List all skills in the vault."""
+        return SkillParser.parse_all(self.skills_dir)
     
     def get_skill(self, name: str) -> Optional[Skill]:
         """Get a skill by name."""
-        # Check global skills first
-        skill_path = self.global_skills_dir / name
+        skill_path = self.skills_dir / name
         if skill_path.exists():
             try:
                 return SkillParser.parse(skill_path)
-            except (FileNotFoundError, ValueError):
-                pass
-        
-        # Check local skills
-        skill_path = self.local_skills_dir / name
-        if skill_path.exists():
-            try:
-                skill = SkillParser.parse(skill_path)
-                skill.is_local = True
-                return skill
             except (FileNotFoundError, ValueError):
                 pass
         
@@ -286,6 +268,42 @@ class Vault:
         if skill:
             return skill.version
         return "0.0.0"
+    
+    def list_presets(self) -> list[str]:
+        """List all available presets in the vault."""
+        presets = []
+        if not self.presets_dir.exists():
+            return presets
+        
+        for preset_dir in self.presets_dir.iterdir():
+            if preset_dir.is_dir() and (preset_dir / "PRESET.md").is_file():
+                presets.append(preset_dir.name)
+        
+        return sorted(presets)
+    
+    def get_preset_content(self, name: str) -> Optional[str]:
+        """Get the content of a named preset."""
+        preset_file = self.presets_dir / name / "PRESET.md"
+        if preset_file.is_file():
+            return preset_file.read_text(encoding="utf-8")
+        return None
+    
+    def get_preset_skills(self, name: str) -> list[str]:
+        """Get list of required skills from a preset's skills.json if it exists."""
+        skills_file = self.presets_dir / name / "skills.json"
+        if not skills_file.is_file():
+            return []
+            
+        try:
+            with open(skills_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                skills = data.get("skills")
+                if isinstance(skills, list):
+                    return [str(s) for s in skills]
+        except (json.JSONDecodeError, OSError):
+            pass
+            
+        return []
     
     def commit_skill(self, skill_name: str, message: str, author_name: str = "Skill Vault", author_email: str = "vault@local") -> str:
         """Commit changes to a skill and create a tag.
@@ -449,8 +467,7 @@ class ProjectVault:
         self.config.installed_skills[skill.name] = {
             "version": skill.version,
             "installed_at": datetime.now().isoformat(),
-            "frameworks": frameworks,
-            "is_local": skill.is_local
+            "frameworks": frameworks
         }
         self._save_installed()
     

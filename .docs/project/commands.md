@@ -23,7 +23,6 @@ Initialize the global vault.
 skill-vault vault init                    # Default: ~/.skill-vault
 skill-vault vault init --path ~/my-vault  # Custom path
 skill-vault vault init --repo <url>       # With remote repository
-skill-vault vault init --no-setup-global  # Skip global junctions
 ```
 
 ### vault list
@@ -49,21 +48,11 @@ Promote a skill from project to vault.
 ```bash
 skill-vault vault create                  # Interactive selection
 skill-vault vault create <name>           # Add as global skill
-skill-vault vault create <name> --local   # Add as local skill
-skill-vault vault create <name> --global  # Explicitly global
-```
-
-### vault setup-global
-
-Create junctions in all framework home directories (~/.agents/skills, ~/.claude/skills, etc.).
-
-```bash
-skill-vault vault setup-global
 ```
 
 ### vault sync-global
 
-Synchronize global junctions - add new and remove obsolete.
+Synchronize junctions - add new and remove obsolete.
 
 ```bash
 skill-vault vault sync-global
@@ -124,8 +113,7 @@ skill-vault skills list
 Add skills to the project.
 
 ```bash
-skill-vault skills add                     # Interactive (local skills only)
-skill-vault skills add --global            # Interactive (show global skills)
+skill-vault skills add                     # Interactive selection
 skill-vault skills add <name>              # Direct install
 skill-vault skills add <name> --force      # Force reinstall
 skill-vault skills add -f codex <name>     # For specific framework
@@ -147,6 +135,20 @@ Show differences between installed and vault version.
 
 ```bash
 skill-vault skills diff <name>
+```
+
+---
+
+## Presets Commands
+
+Manage configuration presets for agents.
+
+### presets load
+
+Load and combine multiple presets into the project's agent configuration optionally auto-installing connected skills.
+
+```bash
+skill-vault presets load                   # Opens interactive selection and ordering menu
 ```
 
 ---

@@ -62,7 +62,6 @@ Configuration management for frameworks and defaults.
 **Key Methods:**
 - `detect_frameworks()`: Auto-detect frameworks in a project
 - `get_local_path()`: Get framework's local skills path
-- `get_global_path()`: Get framework's global skills path
 
 ### vault.py
 
@@ -71,15 +70,15 @@ Git-integrated vault management.
 **Classes:**
 - `Vault`: Manages the global skill repository
 - `ProjectVault`: Manages project-specific settings
-- `ProjectConfig`: Project configuration dataclass
 
 **Key Methods:**
 - `initialize()`: Create new vault with Git
-- `list_global_skills()`, `list_local_skills()`: List available skills
+- `list_skills()`: List all available skills
 - `get_skill()`: Retrieve skill by name
 - `commit_skill()`: Commit and tag a skill version
 - `push()`, `pull()`: Sync with remote branches
-- `set_remote()`, `remove_remote()`: Manage remote repository connections
+- `list_presets()`: List available agent configuration presets
+- `get_preset_skills()`: Extract dependent skills for a preset
 
 ### skills.py
 
@@ -129,15 +128,6 @@ Interactive CLI elements using InquirerPy.
 - `select_updates_interactive()`: Select updates to apply
 - `confirm_remove_modified()`: Confirm removal of modified skills
 
-### global_junctions.py
-
-Global skill junction management.
-
-**Functions:**
-- `setup_global_junctions()`: Create junctions in all framework home directories
-- `sync_global_junctions()`: Add new and remove obsolete junctions
-- `remove_global_junction()`: Remove skill from all global directories
-
 ## Data Flow
 
 ### Installing a Skill
@@ -162,10 +152,21 @@ Global skill junction management.
    ├── Filter out vault-tracked skills
    └── Return untracked skills
 3. SkillSync.promote_skill_to_vault()
-   ├── Copy to vault (global/ or local/)
+   ├── Copy to vault
    ├── Commit to vault
-   ├── Update global junctions
    └── Track in installed.json
+```
+
+### Loading a Preset
+
+```
+1. CLI: presets load
+2. vault.list_presets() + interactive selection & ordering
+3. Safety Check: Case-insensitive scan for existing config files
+4. Retrieve preset configurations & combine
+5. Check PRESET/skills.json for dependencies
+6. SkillSync.install_skill() (for dependencies, skipping existing)
+7. Save merged config & Symlink for other frameworks
 ```
 
 ## File Formats
@@ -193,10 +194,23 @@ frameworks: [codex]     # Optional
     "version": "1.0.0",
     "installed_at": "2026-02-20T00:00:00",
     "frameworks": ["codex", "claude"],
-    "is_local": false,
     "file_hashes": {
       "SKILL.md": "abc123..."
     }
   }
+}
+```
+
+### PRESET.md and skills.json
+
+```markdown
+# Presets are located at `~/.skill-vault/presets/<Name>/PRESET.md`
+<!-- PRESET CONTENT -->
+```
+
+```json
+// skills.json inside proper preset folder
+{
+  "skills": ["required-skill-1", "required-skill-2"]
 }
 ```

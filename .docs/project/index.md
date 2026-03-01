@@ -22,10 +22,10 @@ Skill Vault provides a centralized system for creating, versioning, and distribu
 
 ## Core Concepts
 
-### Global vs Local Skills
+### Skills and Presets
 
-- **Global Skills**: Shared across all projects, stored in `~/.skill-vault/skills/global/`
-- **Local Skills**: Project-specific or private templates, stored in `~/.skill-vault/skills/local/`
+- **Skills**: Hosted in `~/.skill-vault/skills/`
+- **Presets**: Agent configuration presets hosted in `~/.skill-vault/presets/`
 
 ### Vault
 
@@ -43,9 +43,8 @@ Skill Vault uses Windows Junctions instead of symlinks to link skills into frame
 
 ```
 ~/.skill-vault/           # Global vault (Git repository)
-├── skills/
-│   ├── global/           # Shared skills
-│   └── local/            # Private skill templates
+├── presets/              # Agent configuration presets
+└── skills/               # All tracked skills
 
 my-project/
 ├── .skill-vault/         # Project metadata

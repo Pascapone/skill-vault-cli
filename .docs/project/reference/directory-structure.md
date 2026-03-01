@@ -9,17 +9,17 @@ File system layout for Skill Vault.
 ├── .git/                           # Version control
 ├── .gitignore                      # Ignores projects/ subdirectories
 ├── README.md                       # Vault README
-├── skills/
-│   ├── global/                     # Global skills (shared across projects)
-│   │   ├── session-handoff/
-│   │   │   ├── SKILL.md            # Skill definition (REQUIRED)
-│   │   │   ├── scripts/            # Optional: Helper scripts
-│   │   │   └── assets/             # Optional: Templates, files
-│   │   └── my-skill/
-│   │       └── SKILL.md
-│   └── local/                      # Local/private skill templates
-│       └── my-private-skill/
-│           └── SKILL.md
+├── presets/                        # Agent configuration presets
+│   └── Agent1/
+│       ├── PRESET.md
+│       └── skills.json             # Optional dependencies
+├── skills/                         # All skills
+│   ├── session-handoff/
+│   │   ├── SKILL.md                # Skill definition (REQUIRED)
+│   │   ├── scripts/                # Optional: Helper scripts
+│   │   └── assets/                 # Optional: Templates, files
+│   └── my-skill/
+│       └── SKILL.md
 ├── projects/                       # Registered project metadata (gitignored)
 └── config/
     └── frameworks.yaml             # Framework configurations
@@ -27,7 +27,7 @@ File system layout for Skill Vault.
 
 ### Global Vault Purpose
 
-- Central storage for all skills
+- Central storage for all skills and presets
 - Git version control with tagging
 - Single source of truth for skill versions
 
@@ -70,15 +70,15 @@ Global skills are accessible via junctions in framework home directories:
 
 ```
 ~/.agents/skills/                   # Codex/OpenCode
-│   └── my-skill/                   # Junction → ~/.skill-vault/skills/global/my-skill/
+│   └── my-skill/                   # Junction → ~/.skill-vault/skills/my-skill/
 ├── .claude/skills/                 # Claude Code
-│   └── my-skill/                   # Junction → ~/.skill-vault/skills/global/my-skill/
+│   └── my-skill/                   # Junction → ~/.skill-vault/skills/my-skill/
 ├── .gemini/antigravity/skills/     # Antigravity
-│   └── my-skill/                   # Junction → ~/.skill-vault/skills/global/my-skill/
+│   └── my-skill/                   # Junction → ~/.skill-vault/skills/my-skill/
 ├── .roo/skills/                    # Roo Code
-│   └── my-skill/                   # Junction → ~/.skill-vault/skills/global/my-skill/
+│   └── my-skill/                   # Junction → ~/.skill-vault/skills/my-skill/
 └── .vscode/skills/                 # VS Code
-    └── my-skill/                   # Junction → ~/.skill-vault/skills/global/my-skill/
+    └── my-skill/                   # Junction → ~/.skill-vault/skills/my-skill/
 ```
 
 ### Global Access Purpose
@@ -117,14 +117,13 @@ Vault                    Home Directories              Project
 ------                   ---------------              -------
 ~/.skill-vault/
 └── skills/
-    └── global/
-        └── my-skill/ ─────┬──→ ~/.agents/skills/my-skill/
-                           ├──→ ~/.claude/skills/my-skill/
-                           └──→ ~/.gemini/antigravity/skills/my-skill/
+    └── my-skill/ ────────┬─→ ~/.agents/skills/my-skill/
+                          ├──→ ~/.claude/skills/my-skill/
+                          └──→ ~/.gemini/antigravity/skills/my-skill/
                                                        
                                  (when installed in project)
                                                        
-                           └──→ my-project/.agents/skills/my-skill/
-                                    ↑
-                                    └── my-project/.claude/skills/ (junction)
+                          └──→ my-project/.agents/skills/my-skill/
+                                   ↑
+                                   └── my-project/.claude/skills/ (junction)
 ```

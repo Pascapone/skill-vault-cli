@@ -1,6 +1,6 @@
 """Interactive skill selection using InquirerPy for modern CLI experience."""
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 from rich.console import Console
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
@@ -16,7 +16,6 @@ console = Console()
 def select_skills_interactive(
     vault: Vault,
     preselected: Optional[List[str]] = None,
-    show_global: bool = False,
     installed_skills: Optional[List[str]] = None
 ) -> List[str]:
     """Show interactive multi-select for skills using modern checkbox UI.
@@ -30,7 +29,6 @@ def select_skills_interactive(
     Args:
         vault: The vault instance
         preselected: List of skill names to preselect
-        show_global: If True, show global skills; if False (default), show only local skills
         installed_skills: List of already installed skill names (will be hidden)
         
     Returns:
@@ -39,49 +37,27 @@ def select_skills_interactive(
     preselected = preselected or []
     installed_skills = installed_skills or []
     
-    global_skills = vault.list_global_skills()
-    local_skills = vault.list_local_skills()
-    
-    if show_global:
-        all_skills = global_skills + local_skills
-    else:
-        all_skills = local_skills
-    
+    all_skills = vault.list_skills()
+        
     all_skills = [s for s in all_skills if s.name not in installed_skills]
     
     if not all_skills:
         if installed_skills:
             console.print("[green]All skills already installed[/green]")
-        elif show_global:
-            console.print("[yellow]No skills available in vault[/yellow]")
         else:
-            console.print("[yellow]No local skills available. Use --global to see global skills.[/yellow]")
+            console.print("[yellow]No skills available in vault[/yellow]")
         return []
     
     all_skills.sort(key=lambda s: s.name)
     
     choices = []
     
-    if show_global:
-        available_global = [s for s in global_skills if s.name not in installed_skills]
-        if available_global:
-            choices.append(Separator("=== Global Skills ==="))
-            for skill in sorted(available_global, key=lambda s: s.name):
-                is_selected = skill.name in preselected
-                choices.append(Choice(
-                    name=f"{skill.name} - {skill.description[:50]}{'...' if len(skill.description) > 50 else ''}",
-                    value=skill.name,
-                    enabled=is_selected
-                ))
-    
-    available_local = [s for s in local_skills if s.name not in installed_skills]
-    if available_local:
-        if show_global:
-            choices.append(Separator("=== Local Skills ==="))
-        for skill in sorted(available_local, key=lambda s: s.name):
+    available_skills = [s for s in all_skills if s.name not in installed_skills]
+    if available_skills:
+        for skill in sorted(available_skills, key=lambda s: s.name):
             is_selected = skill.name in preselected
             choices.append(Choice(
-                name=f"{skill.name} [local] - {skill.description[:50]}{'...' if len(skill.description) > 50 else ''}",
+                name=f"{skill.name} - {skill.description[:50]}{'...' if len(skill.description) > 50 else ''}",
                 value=skill.name,
                 enabled=is_selected
             ))
@@ -403,29 +379,119 @@ def select_skill_to_promote(discovered_skills: List[dict]) -> Optional[dict]:
         return None
 
 
-def ask_global_or_local(skill_name: str) -> bool:
-    """Ask whether to add skill as global or local.
+def select_presets_interactive(available_presets: List[str]) -> List[str]:
+    """Show interactive multi-select for presets using checkbox UI."""
+    if not available_presets:
+        console.print("[yellow]No presets available in vault[/yellow]")
+        return []
     
-    Args:
-        skill_name: Name of the skill
-        
-    Returns:
-        True for global, False for local
-    """
-    console.print(f"\n[bold cyan]Add '{skill_name}' as:[/bold cyan]")
+    choices = [Choice(name=p, value=p) for p in available_presets]
     
-    choices = [
-        Choice(name="Global skill (available to all projects)", value=True),
-        Choice(name="Local skill (private/template)", value=False),
-    ]
+    console.print("\n[bold cyan]Select presets to load into your project:[/bold cyan]")
+    console.print("[dim]Use arrow keys to navigate, space to select/deselect, enter to confirm[/dim]\n")
     
     try:
-        return inquirer.select(
-            message="Select type:",
+        selected = inquirer.checkbox(
+            message="Select presets:",
             choices=choices,
-            default=True,
+            instruction="(Use space to toggle, enter to confirm)",
             cycle=True,
+            transformer=lambda result: f"{len(result)} preset(s) selected",
+            validate=lambda result: len(result) > 0 or True,
         ).execute()
         
+        return selected if selected else []
     except KeyboardInterrupt:
-        return True  # Default to global
+        console.print("\n[yellow]Selection cancelled[/yellow]")
+        return []
+
+
+def order_presets_interactive(selected_presets: List[str]) -> List[str]:
+    """Show custom interactive UI to order the selected presets.
+    
+    Uses msvcrt on Windows for capturing keystrokes.
+    Provides a Space-to-select and Arrows-to-move interface.
+    """
+    if len(selected_presets) <= 1:
+        return selected_presets
+        
+    import sys
+    if sys.platform != 'win32':
+        # Fallback for non-Windows if needed, though project is Win-optimized
+        console.print("[yellow]Reordering is only fully supported on Windows. Proceeding with current order.[/yellow]")
+        return selected_presets
+        
+    import msvcrt
+    
+    items = list(selected_presets)
+    cursor_idx = 0
+    marked_idx = None
+    
+    def print_menu():
+        # Clear previous lines roughly matching items count + header
+        sys.stdout.write(f"\r\033[{len(items) + 3}A\033[0J")
+        
+        console.print("\n[bold cyan]Order the selected presets:[/bold cyan]")
+        console.print("[dim]Use Up/Down arrows to move cursor, Space to select an item to move, Enter to confirm[/dim]")
+        
+        for i, item in enumerate(items):
+            # Highlight logic
+            is_cursor = i == cursor_idx
+            is_marked = i == marked_idx
+            
+            prefix = " > " if is_cursor else "   "
+            if is_marked:
+                color = "bold req" if is_cursor else "bold yellow"
+                prefix = " >>" if is_cursor else " [*"
+            else:
+                color = "cyan" if is_cursor else "white"
+                
+            suffix = "*]" if is_marked and not is_cursor else ""
+            if is_marked and is_cursor:
+                color = "bold yellow"
+            
+            console.print(f"[{color}]{prefix} {item} {suffix}[/{color}]")
+
+    # Initial empty lines to make room for first print_menu clearing
+    print("\n" * (len(items) + 2))
+    print_menu()
+    
+    try:
+        while True:
+            key = msvcrt.getch()
+            if key in (b'\x03', b'\x1a'):  # Ctrl+C or Ctrl+Z
+                raise KeyboardInterrupt()
+                
+            if key == b'\r':  # Enter
+                break
+                
+            if key == b' ':  # Space - toggle mark
+                if marked_idx == cursor_idx:
+                    marked_idx = None  # unmark
+                else:
+                    marked_idx = cursor_idx
+                print_menu()
+                continue
+                
+            if key in (b'\xe0', b'\x00'):  # Arrow keys prefix
+                arrow = msvcrt.getch()
+                old_cursor = cursor_idx
+                
+                if arrow == b'H':  # Up
+                    cursor_idx = max(0, cursor_idx - 1)
+                elif arrow == b'P':  # Down
+                    cursor_idx = min(len(items) - 1, cursor_idx + 1)
+                    
+                if marked_idx is not None and old_cursor != cursor_idx:
+                    # Move item
+                    items[old_cursor], items[cursor_idx] = items[cursor_idx], items[old_cursor]
+                    marked_idx = cursor_idx
+                
+                print_menu()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Ordering cancelled, keeping current order.[/yellow]")
+        return selected_presets
+        
+    console.print("\n[green]Order confirmed![/green]")
+    return items
+

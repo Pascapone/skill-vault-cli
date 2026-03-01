@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Any, Optional
 from rich.console import Console
 from rich.table import Table
+from InquirerPy import inquirer
+from rich.console import Console
+from rich.table import Table
 from rich.panel import Panel
 
 from .config import Config
 from .vault import Vault, ProjectVault
 from .sync import SkillSync
 from . import interactive
-from .global_junctions import setup_global_junctions, sync_global_junctions
 
 
 console = Console()
@@ -200,10 +202,9 @@ def ensure_vault_repo_initialized(vault: Vault) -> bool:
 def pull_vault_remote(
     vault: Vault,
     remote_name: str,
-    branch: Optional[str] = None,
-    sync_global: bool = True
+    branch: Optional[str] = None
 ) -> bool:
-    """Pull from configured remote and refresh global junctions."""
+    """Pull from configured remote."""
     if not vault.has_remote(remote_name):
         console.print(
             f"[red]Remote '{remote_name}' not configured. Use 'skill-vault vault repo connect --url ...' first.[/red]"
@@ -273,11 +274,6 @@ def pull_vault_remote(
     )
     console.print(f"[green]+[/green] Pulled latest changes from {remote_name}/{pulled_branch}")
 
-    if sync_global:
-        console.print("[blue]Updating global junctions...[/blue]")
-        config = Config(get_vault_path())
-        sync_global_junctions(vault, config)
-
     return True
 
 
@@ -299,6 +295,155 @@ def cli():
     pass
 
 
+# Presets Commands
+@cli.group()
+def presets():
+    """Manage and load Agent configurations from Presets."""
+    pass
+
+
+@presets.command(name='load')
+def presets_load():
+    """Load and combine multiple presets into the project's agent configuration."""
+    proj = get_project()
+    if not proj.is_initialized():
+        console.print("[red]Project not initialized. Run 'skill-vault project init' first.[/red]")
+        return
+    
+    vault = get_vault()
+    available_presets = vault.list_presets()
+    if not available_presets:
+        console.print("[yellow]No presets found in the global vault (~/.skill-vault/presets/).[/yellow]")
+        return
+    
+    # Select presets
+    selected = interactive.select_presets_interactive(available_presets)
+    if not selected:
+        return
+    
+    # Order presets if multiple are selected
+    if len(selected) > 1:
+        selected = interactive.order_presets_interactive(selected)
+        if not selected:
+            return
+    
+    config = Config(get_vault_path())
+    proj.load()
+    
+    enabled_frameworks = []
+    if proj.config and hasattr(proj.config, 'enabled_frameworks'):
+        enabled_frameworks = proj.config.enabled_frameworks
+    
+    if not enabled_frameworks:
+        console.print("[red]No frameworks are enabled for this project.[/red]")
+        return
+    
+    all_fws = config.get_all_frameworks()
+    target_markdown_files = [fw.agent_markdown for fw in all_fws.values() if fw.agent_markdown]
+    
+    # Strict safety check loop
+    cwd = Path.cwd()
+    while True:
+        conflicts = []
+        for item in cwd.iterdir():
+            if item.is_file() and not item.is_symlink():
+                for tmv in target_markdown_files:
+                    if item.name.lower() == tmv.lower():
+                        conflicts.append(item.name)
+        
+        if conflicts:
+            console.print("\n[bold red]Strict Safety Check Failed![/bold red]")
+            console.print(f"[yellow]The following configuration files already exist in your project:[/yellow] {', '.join(set(conflicts))}")
+            console.print("Sichere deine Daten, entferne sie und versuche es nochmal. Das Überschreiben ist streng verboten.")
+            
+            try:
+                retry = inquirer.confirm(message="Retry?", default=True).execute()
+                if not retry:
+                    console.print("[yellow]Aborted.[/yellow]")
+                    return
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Aborted.[/yellow]")
+                return
+            continue
+        break
+        
+    # Combine preset contents
+    combined_content = []
+    for preset_name in selected:
+        content = vault.get_preset_content(preset_name)
+        if content:
+            combined_content.append(f"<!-- PRESET: {preset_name} -->\n{content}")
+    
+    if not combined_content:
+        console.print("[red]No content could be loaded from the selected presets.[/red]")
+        return
+    
+    final_text = "\n\n".join(combined_content) + "\n"
+    
+    # Write to primary framework's markdown file
+    primary_fw_name = enabled_frameworks[0]
+    primary_fw = config.get_framework(primary_fw_name)
+    
+    if not primary_fw or not primary_fw.agent_markdown:
+        console.print(f"[red]Primary framework '{primary_fw_name}' has no agent_markdown configured.[/red]")
+        return
+        
+    primary_file = cwd / primary_fw.agent_markdown
+    
+    try:
+        # Before writing, remove symlink if it exists
+        if primary_file.is_symlink():
+            primary_file.unlink()
+            
+        primary_file.write_text(final_text, encoding="utf-8")
+        console.print(f"[green]+[/green] Successfully wrote combined presets to {primary_fw.agent_markdown}")
+    except Exception as e:
+        console.print(f"[red]Failed to write {primary_fw.agent_markdown}: {e}[/red]")
+        return
+        
+    # Setup symlinks for other frameworks
+    from .agent_markdown import setup_agent_markdown_symlinks
+    setup_agent_markdown_symlinks(cwd, enabled_frameworks, config)
+    
+    console.print("[green]Presets successfully loaded![/green]")
+    
+    # Check for requested skills in presets
+    requested_skills = set()
+    for preset_name in selected:
+        skills = vault.get_preset_skills(preset_name)
+        requested_skills.update(skills)
+    
+    if requested_skills:
+        requested_skills_list = sorted(list(requested_skills))
+        console.print(f"\n[cyan]The selected presets recommend loading the following skills:[/cyan] {', '.join(requested_skills_list)}")
+        try:
+            load_skills = inquirer.confirm(message="Do you want to load these skills now?", default=True).execute()
+        except KeyboardInterrupt:
+            load_skills = False
+            
+        if load_skills:
+            sync = SkillSync(vault, proj, config)
+            already_installed = []
+            newly_installed_count = 0
+            
+            for required_skill in requested_skills_list:
+                if proj.is_skill_installed(required_skill):
+                    already_installed.append(required_skill)
+                else:
+                    success = sync.install_skill(required_skill, force=False, auto_commit=False, auto_push=False)
+                    if success:
+                        newly_installed_count += 1
+            
+            if newly_installed_count > 0:
+                console.print(f"[green]Successfully loaded {newly_installed_count} skill(s).[/green]")
+                
+            if already_installed:
+                console.print(f"\n[yellow]⚠ Warning: The following skill(s) were NOT overwritten because they are already installed:[/yellow]")
+                for skill in already_installed:
+                    console.print(f"  [yellow]• {skill}[/yellow]")
+                console.print("[dim]Use 'skill-vault skills update' or 'skill-vault skills add --force' if you need the latest versions.[/dim]")
+
+
 # Global Vault Commands
 @cli.group()
 def vault():
@@ -312,8 +457,7 @@ def vault():
 @click.option('--remote', default="origin", show_default=True, help='Remote name')
 @click.option('--branch', default=None, help='Preferred branch for pull/push (default: main)')
 @click.option('--auto-push/--no-auto-push', default=False, help='Auto-push vault commits to remote')
-@click.option('--setup-global/--no-setup-global', default=True, help='Setup global junctions after init')
-def vault_init(path, repo, remote, branch, auto_push, setup_global):
+def vault_init(path, repo, remote, branch, auto_push):
     """Initialize the Skill Vault."""
     vault_path = Path(path).expanduser() if path else Path.home() / ".skill-vault"
     
@@ -359,12 +503,6 @@ def vault_init(path, repo, remote, branch, auto_push, setup_global):
     if effective_repo_url:
         console.print(f"[green]+[/green] Remote configured: {remote} -> {effective_repo_url}")
     console.print(f"[green]+[/green] Auto-push: {'enabled' if auto_push else 'disabled'}")
-    
-    # Setup global junctions
-    if setup_global:
-        console.print("\n[blue]Setting up global junctions...[/blue]")
-        config = Config(vault_path)
-        setup_global_junctions(vault, config)
 
 
 @vault.command(name='list')
@@ -376,30 +514,20 @@ def vault_list():
         console.print("[red]Vault not initialized. Run 'skill-vault vault init' first.[/red]")
         return
     
-    global_skills = vault.list_global_skills()
-    local_skills = vault.list_local_skills()
+    skills = vault.list_skills()
     
-    if global_skills:
-        table = Table(title="Global Skills")
+    if skills:
+        table = Table(title="Vault Skills")
         table.add_column("Name", style="cyan")
         table.add_column("Version", style="green")
         table.add_column("Description")
         
-        for skill in global_skills:
+        for skill in skills:
             table.add_row(skill.name, skill.version, skill.description)
         
         console.print(table)
-    
-    if local_skills:
-        table = Table(title="Local Skills")
-        table.add_column("Name", style="cyan")
-        table.add_column("Version", style="green")
-        table.add_column("Description")
-        
-        for skill in local_skills:
-            table.add_row(skill.name, skill.version, skill.description)
-        
-        console.print(table)
+    else:
+        console.print("[yellow]No skills found in the vault.[/yellow]")
 
 
 @vault.command(name='show')
@@ -418,35 +546,8 @@ def vault_show(skill_name):
         f"[dim]{skill.description}[/dim]\n\n"
         f"Author: {skill.author}\n"
         f"Tags: {', '.join(skill.tags) or 'None'}\n"
-        f"Frameworks: {', '.join(skill.frameworks) or 'All'}\n"
-        f"Type: {'Local' if skill.is_local else 'Global'}"
+        f"Frameworks: {', '.join(skill.frameworks) or 'All'}"
     ))
-
-
-@vault.command(name='setup-global')
-def vault_setup_global():
-    """Setup global junctions for all skills in framework directories."""
-    vault = get_vault()
-    
-    if not vault.repo:
-        console.print("[red]Vault not initialized. Run 'skill-vault vault init' first.[/red]")
-        return
-    
-    config = Config(get_vault_path())
-    setup_global_junctions(vault, config)
-
-
-@vault.command(name='sync-global')
-def vault_sync_global():
-    """Synchronize global junctions - add new and remove obsolete."""
-    vault = get_vault()
-    
-    if not vault.repo:
-        console.print("[red]Vault not initialized. Run 'skill-vault vault init' first.[/red]")
-        return
-    
-    config = Config(get_vault_path())
-    sync_global_junctions(vault, config)
 
 
 @vault.group(name='repo')
@@ -591,13 +692,7 @@ def vault_repo_disconnect(remote, keep_auto_push):
 @vault_repo.command(name='pull')
 @click.option('--remote', default=None, help='Remote name (default: configured remote)')
 @click.option('--branch', default=None, help='Branch to pull (default: configured/current)')
-@click.option(
-    '--sync-global/--no-sync-global',
-    default=True,
-    show_default=True,
-    help='Sync global junctions after pulling'
-)
-def vault_repo_pull(remote, branch, sync_global):
+def vault_repo_pull(remote, branch):
     """Pull latest changes from configured remote."""
     vault = get_vault()
     if not ensure_vault_repo_initialized(vault):
@@ -609,8 +704,7 @@ def vault_repo_pull(remote, branch, sync_global):
         pull_vault_remote(
             vault,
             remote_name=remote_name,
-            branch=effective_branch,
-            sync_global=sync_global
+            branch=effective_branch
         )
     except Exception as e:
         console.print(f"[red]Failed to pull: {e}[/red]")
@@ -714,11 +808,9 @@ def vault_repo_auto_push(state):
 
 @vault.command(name='create')
 @click.argument('skill_name', required=False)
-@click.option('--local', 'is_local', is_flag=True, help='Add as local skill instead of global')
-@click.option('--global', 'is_global', is_flag=True, help='Add as global skill (default)')
 @click.option('--message', '-m', default=None, help='Commit message')
 @click.option('--push', is_flag=True, help='Push to remote after commit')
-def vault_create(skill_name, is_local, is_global, message, push):
+def vault_create(skill_name, message, push):
     """Add a new skill from the project to the vault.
     
     Discovers skills in the current project that are not yet in the vault
@@ -727,8 +819,7 @@ def vault_create(skill_name, is_local, is_global, message, push):
     
     Examples:
         skill-vault vault create              # Interactive selection
-        skill-vault vault create my-skill     # Add specific skill as global
-        skill-vault vault create my-skill --local  # Add as local skill
+        skill-vault vault create my-skill     # Add specific skill
     """
     vault = get_vault()
     
@@ -780,15 +871,6 @@ def vault_create(skill_name, is_local, is_global, message, push):
         if not selected:
             return
     
-    # Determine global/local
-    if is_local:
-        is_global_skill = False
-    elif is_global:
-        is_global_skill = True
-    else:
-        # Ask interactively
-        is_global_skill = interactive.ask_global_or_local(selected["name"])
-
     auto_push_enabled = push or get_auto_push_enabled()
     remote_name = get_effective_remote_name()
     branch = get_effective_branch(vault, remote_name=remote_name)
@@ -796,7 +878,6 @@ def vault_create(skill_name, is_local, is_global, message, push):
     # Promote the skill
     sync.promote_skill_to_vault(
         skill_name=selected["name"],
-        is_global=is_global_skill,
         message=message,
         auto_push=auto_push_enabled,
         remote_name=remote_name,
@@ -853,6 +934,10 @@ def project_init(name, frameworks):
     vault = get_vault()
     sync = SkillSync(vault, proj, config)
     sync.ensure_framework_junctions(framework_list)
+    
+    # Set up agent markdown symlinks
+    from .agent_markdown import setup_agent_markdown_symlinks
+    setup_agent_markdown_symlinks(Path.cwd(), framework_list, config)
 
 
 @project.command(name='status')
@@ -911,7 +996,7 @@ def skills_list():
         console.print("[red]Vault not initialized.[/red]")
         return
     
-    all_skills = vault.list_global_skills() + vault.list_local_skills()
+    all_skills = vault.list_skills()
     
     if proj.is_initialized():
         proj.load()
@@ -941,11 +1026,8 @@ def skills_list():
 @click.option('--interactive', '-i', 'use_interactive', is_flag=True, help='Force interactive mode even with skill names')
 @click.option('--framework', '-f', 'frameworks', multiple=True, help='Frameworks to install for')
 @click.option('--force', is_flag=True, help='Force reinstall if already installed')
-@click.option('--global', 'show_global', is_flag=True, help='Show global skills instead of local skills')
-def skills_add(skill_names, use_interactive, frameworks, force, show_global):
+def skills_add(skill_names, use_interactive, frameworks, force):
     """Add skills to the project.
-    
-    By default, shows only local skills. Use --global to show global skills.
     
     If no skill names are provided, opens an interactive multi-select menu
     where you can navigate with arrow keys, select with spacebar, and confirm with enter.
@@ -966,7 +1048,7 @@ def skills_add(skill_names, use_interactive, frameworks, force, show_global):
     
     if use_interactive or not skill_names:
         installed = list(proj.get_installed_skills().keys())
-        skill_names = interactive.select_skills_interactive(vault, list(skill_names), show_global=show_global, installed_skills=installed)
+        skill_names = interactive.select_skills_interactive(vault, list(skill_names), installed_skills=installed)
     
     if not skill_names:
         console.print("[yellow]No skills selected[/yellow]")
@@ -1053,8 +1135,7 @@ def skills_remove(skill_names, use_interactive, force):
                     author="Unknown",
                     tags=[],
                     frameworks=info.get("frameworks", []),
-                    path=None,
-                    is_local=info.get("is_local", False)
+                    path=None
                 ))
         
         skill_names = interactive.select_skills_to_remove(
@@ -1287,6 +1368,10 @@ def framework_edit():
         sync.ensure_framework_junctions(selected)
         console.print("[green]+[/green] Junctions updated — new framework can see all existing skills")
 
+    if added or removed:
+        from .agent_markdown import setup_agent_markdown_symlinks
+        setup_agent_markdown_symlinks(proj.path, selected, config)
+
     if proj.config.installed_skills:
         console.print(
             "[dim]Note: Skill records in installed.json still list old frameworks. Run 'skills add <name> --force' to update them.[/dim]"
@@ -1301,10 +1386,9 @@ def framework_list():
     table = Table(title="Available Frameworks")
     table.add_column("Name", style="cyan")
     table.add_column("Local Path")
-    table.add_column("Global Path")
     
     for name, fw in config.get_all_frameworks().items():
-        table.add_row(name, fw.local_path, fw.global_path)
+        table.add_row(name, fw.local_path)
     
     console.print(table)
 

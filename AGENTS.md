@@ -8,9 +8,17 @@ A tool for managing Agent Skills across different AI frameworks (OpenCode, Claud
 - **Windows Junctions**: Uses Windows Junctions instead of Symlinks (no admin rights needed)
 - **Git Integration**: Full version control for your skills with automatic tagging
 - **Interactive CLI**: Easy-to-use interface for skill selection and management
-- **Global & Local Skills**: Share skills globally or keep them project-specific
+- **Project-Based Skills**: Add skills selectively to your projects from the central vault
 - **Auto-Detection**: Automatically detects which AI frameworks are used in your project
 - **Framework Editing**: Update project frameworks later with interactive select/deselect
+
+## Documentation
+
+For comprehensive information about Skill Vault's architecture, CLI commands, and usage guides, please refer to the [`.docs/project/`](.docs/project/index.md) directory:
+- [Architecture](.docs/project/architecture.md)
+- [CLI Commands Reference](.docs/project/commands.md)
+- [Creating Skills](.docs/project/guides/creating-skills.md)
+- [Vault + GitHub Quickstart](.docs/project/guides/vault-github-quickstart.md)
 
 ## Installation
 
@@ -26,52 +34,28 @@ This installs three command aliases:
 
 ## Quick Start
 
-### 1. Initialize the Global Vault
+### 1. Initialize the Vault
 
 ```bash
-# Initialize vault (automatically creates global junctions)
+# Initialize vault
 skill-vault vault init
 
 # Or specify custom path
 skill-vault vault init --path ~/my-vault
+
+# Optional: configure remote + auto-push at init
+skill-vault vault init --repo git@github.com:<you>/<repo>.git --auto-push
+
+# Default branch is main (override if needed)
+skill-vault vault init --repo git@github.com:<you>/<repo>.git --branch main
 ```
 
-### 2. Global Skills
+### 2. Create a Skill
 
-Global skills are automatically available in your home directory for all frameworks:
-
-```
-~/.agents/skills/           # For Codex/OpenCode
-~/.claude/skills/           # For Claude Code
-~/.gemini/antigravity/skills/  # For Antigravity
-~/.roo/skills/              # For Roo Code
-```
-
-### 3. Create a Skill
-
-**Method A: Promote from Project (Recommended)**
-
-Create a skill in your project's framework directory and promote it to the vault:
+Create a skill directory in your vault's `skills/` folder:
 
 ```bash
-# Create skill in project
-mkdir -p .agents/skills/my-skill
-
-# Create SKILL.md (see format below)
-# ... edit SKILL.md ...
-
-# Promote to vault
-skill-vault vault create my-skill              # Add as global skill
-skill-vault vault create my-skill --local      # Add as local skill
-skill-vault vault create                       # Interactive selection
-```
-
-**Method B: Manual Creation**
-
-Create a skill directory directly in the vault:
-
-```bash
-mkdir -p ~/.skill-vault/skills/global/my-skill
+mkdir -p ~/.skill-vault/skills/my-skill
 ```
 
 Create a `SKILL.md` file:
@@ -97,19 +81,7 @@ This skill helps with...
 
 **Note**: `version` is optional and defaults to `0.0.0` if not specified.
 
-### 4. Setup Global Junctions
-
-After adding skills to the vault, create junctions in framework directories:
-
-```bash
-# Automatically creates junctions in ~/.agents/skills, ~/.claude/skills, etc.
-skill-vault vault setup-global
-
-# Or sync (removes obsolete, adds new)
-skill-vault vault sync-global
-```
-
-### 5. Initialize a Project
+### 3. Initialize a Project
 
 ```bash
 cd my-project
@@ -121,7 +93,7 @@ skill-vault project init
 skill-vault project init --framework codex --framework claude
 ```
 
-### 6. Add Skills to Project
+### 4. Add Skills to Project
 
 Interactive mode:
 ```bash
@@ -138,7 +110,7 @@ skill-vault skills add my-skill
 skill-vault skills add my-skill --force
 ```
 
-### 7. Edit Project Frameworks (Optional)
+### 5. Edit Project Frameworks (Optional)
 
 If you want to change enabled frameworks after initialization:
 
@@ -148,7 +120,7 @@ skill-vault framework edit
 
 This opens a checkbox list where you can select or deselect frameworks.
 
-### 8. Sync Updates
+### 6. Sync Updates
 
 ```bash
 # Check for updates
@@ -161,7 +133,7 @@ skill-vault sync -i
 skill-vault sync --all
 ```
 
-### 9. Push Local Skills to Vault
+### 7. Push Local Skills to Vault
 
 If you modified a skill in your project:
 
@@ -169,20 +141,48 @@ If you modified a skill in your project:
 skill-vault push my-skill
 ```
 
+### 8. Connect to GitHub (Vault Repository)
+
+```bash
+# See current repo state
+skill-vault vault repo status
+
+# Connect existing remote
+skill-vault vault repo connect --url git@github.com:<you>/<repo>.git --push
+
+# GitHub HTTPS URLs are accepted and auto-converted to SSH
+# skill-vault vault repo connect --url https://github.com/<you>/<repo>.git --push
+
+# Or create a new GitHub repo via gh CLI
+skill-vault vault repo create --name my-skill-vault --private
+
+# Enable automatic remote pushes after vault commits
+skill-vault vault repo auto-push on
+
+# Pull updates pushed from another machine
+skill-vault vault repo pull
+
+# Disconnect current remote
+skill-vault vault repo disconnect
+```
+
 ## Commands Reference
 
-### Global Vault Commands
+### Vault Commands
 
 ```bash
 skill-vault vault init                          # Initialize vault
-skill-vault vault init --no-setup-global        # Without global junctions
+skill-vault vault init --repo <ssh-url> --auto-push # Init with remote and auto-push
 skill-vault vault list                          # List all skills
 skill-vault vault show <skill>                  # Show skill details
-skill-vault vault create                        # Interactive: promote skill from project
-skill-vault vault create <name>                 # Promote specific skill as global
-skill-vault vault create <name> --local         # Promote as local skill
-skill-vault vault setup-global                  # Create global junctions
-skill-vault vault sync-global                   # Sync global junctions
+skill-vault vault create <name>                 # Promote skill from project to vault
+skill-vault vault create <name> --push          # Promote and push remote
+skill-vault vault repo status                   # Show vault git/remote status
+skill-vault vault repo connect --url <ssh-url>  # Connect/update remote
+skill-vault vault repo disconnect               # Disconnect configured remote
+skill-vault vault repo create --name <name>     # Create GitHub repo via gh
+skill-vault vault repo pull                     # Pull latest from configured remote
+skill-vault vault repo auto-push on|off         # Toggle auto-push
 ```
 
 ### Project Commands
@@ -220,28 +220,27 @@ skill-vault pull                                # Pull latest vault changes
 ```bash
 skill-vault framework list                      # List available frameworks
 skill-vault framework edit                      # Select/deselect enabled frameworks
-skill-vault framework sync                      # Set up framework junctions
+skill-vault framework sync                      # Recreate all junctions
 ```
 
 `framework edit` updates `.skill-vault/config.yaml` for the current project.
-`framework sync` creates junctions so all frameworks share the same skills directory.
+It does not automatically reinstall skills or move existing skill files.
+To apply framework changes to already-installed skills, reinstall those skills (or remove and add again), then run `skill-vault framework sync` if needed.
 
 ## Directory Structure
 
-### Global Vault
+### Vault Structure
 
 ```
-~/.skill-vault/                     # Global vault (Git repository)
+~/.skill-vault/                     # Vault (Git repository)
 ├── .git/                           # Version control
-├── skills/
-│   ├── global/                     # Global skills (shared across projects)
-│   │   ├── session-handoff/
-│   │   │   ├── SKILL.md            # Skill definition (REQUIRED)
-│   │   │   ├── scripts/            # Optional: Helper scripts
-│   │   │   └── assets/             # Optional: Templates, files
-│   │   └── my-skill/
-│   │       └── SKILL.md
-│   └── local/                      # Local/private skill templates
+├── skills/                         # All stored skills
+│   ├── session-handoff/
+│   │   ├── SKILL.md                # Skill definition (REQUIRED)
+│   │   ├── scripts/                # Optional: Helper scripts
+│   │   └── assets/                 # Optional: Templates, files
+│   └── my-skill/
+│       └── SKILL.md
 ├── projects/                       # Registered project metadata
 └── config/
     └── frameworks.yaml             # Framework configurations
@@ -254,27 +253,11 @@ my-project/
 ├── .skill-vault/                   # Project metadata
 │   ├── config.yaml                 # Project configuration
 │   └── installed.json              # Installed skills with versions
-├── .agents/skills/                 # PRIMARY skills directory (real files)
-│   ├── my-skill/                   # Your project skills
-│   └── session-handoff/            # Skills installed from vault
-├── .claude/skills/                 # Junction -> .agents/skills/
-├── .agent/skills/                  # Junction -> .agents/skills/
+├── .agents/skills/                 # Junctions to global skills
+│   └── session-handoff -> ~/.skill-vault/skills/session-handoff
+├── .claude/skills/                 # Junctions for Claude
+│   └── session-handoff -> ~/.skill-vault/skills/session-handoff
 └── src/                            # Your project files
-```
-
-**Important**: The first enabled framework's `skills/` directory becomes the primary (real directory). All other frameworks' `skills/` directories are Windows Junctions pointing to the primary. This means:
-- Adding a skill to `.agents/skills/` automatically makes it available in all frameworks
-- Changes are immediately synced across all framework directories
-- Only one copy of each skill exists on disk
-
-### Home Directory (Global Access)
-
-```
-~/.agents/skills/                   # Codex/OpenCode global skills (junctions to vault)
-~/.claude/skills/                   # Claude Code global skills (junctions to vault)
-~/.gemini/antigravity/skills/       # Antigravity global skills (junctions to vault)
-~/.roo/skills/                      # Roo Code global skills (junctions to vault)
-~/.vscode/skills/                   # VS Code global skills (junctions to vault)
 ```
 
 ## SKILL.md Format
@@ -305,14 +288,14 @@ Example usage...
 
 ## Supported Frameworks
 
-| Framework | Local Path | Global Path | Config Files |
-|-----------|-----------|-------------|--------------|
-| OpenAI Codex | `.agents/skills` | `~/.agents/skills` | `.codex`, `codex.md` |
-| OpenCode | `.agents/skills` | `~/.agents/skills` | `.opencode` |
-| Claude Code | `.claude/skills` | `~/.claude/skills` | `.claude`, `CLAUDE.md` |
-| Antigravity (Gemini) | `.agent/skills` | `~/.gemini/antigravity/skills` | `.gemini`, `gemini.md` |
-| Roo Code | `.roo/skills` | `~/.roo/skills` | `.roo` |
-| VS Code | `.vscode/skills` | `~/.vscode/skills` | `.vscode` |
+| Framework | Local Path | Config Files |
+|-----------|-----------|--------------|
+| OpenAI Codex | `.agents/skills` | `.codex`, `codex.md` |
+| OpenCode | `.agents/skills` | `.opencode` |
+| Claude Code | `.claude/skills` | `.claude`, `CLAUDE.md` |
+| Antigravity (Gemini) | `.agent/skills` | `.gemini`, `gemini.md` |
+| Roo Code | `.roo/skills` | `.roo` |
+| VS Code | `.vscode/skills` | `.vscode` |
 
 ## Configuration
 
@@ -323,7 +306,6 @@ frameworks:
   my-framework:
     name: "My Framework"
     local_path: ".my-framework/skills"
-    global_path: "~/.my-framework/skills"
     config_files: [".my-framework", "my-framework.md"]
     
 defaults:
@@ -351,7 +333,7 @@ This tool is optimized for Windows:
 ### No global skills found
 
 Make sure you have:
-1. Skills in `~/.skill-vault/skills/global/`
+1. Skills in `~/.skill-vault/skills/`
 2. Each skill has a `SKILL.md` file
 3. The SKILL.md has at least `name` and `description` in the frontmatter
 
@@ -362,7 +344,7 @@ Make sure you have:
 skill-vault vault setup-global
 
 # Check if paths exist
-ls ~/.skill-vault/skills/global/
+ls ~/.skill-vault/skills/
 ```
 
 ### Framework not detected
@@ -407,6 +389,17 @@ When you push a skill:
 2. A tag is created with the version from SKILL.md
 3. You can optionally push to remote
 
+You can fully manage remote integration from the CLI:
+
+```bash
+skill-vault vault repo status
+skill-vault vault repo connect --url <ssh-repo-url>
+skill-vault vault repo disconnect
+skill-vault vault repo create --name <repo-name> --private
+skill-vault vault repo pull
+skill-vault vault repo auto-push on
+```
+
 ## License
 
 MIT
@@ -414,6 +407,6 @@ MIT
 ## Contributing
 
 1. Fork the repository
-2. Create your skill in `skills/global/`
-3. Test locally with `skill-vault vault setup-global`
+2. Create your skill in `skills/`
+3. Test locally with a project (`skill-vault project init`)
 4. Submit a pull request

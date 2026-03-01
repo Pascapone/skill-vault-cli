@@ -12,8 +12,8 @@ class FrameworkConfig:
     """Configuration for a specific AI framework."""
     name: str
     local_path: str
-    global_path: str
     config_files: list[str] = field(default_factory=list)
+    agent_markdown: Optional[str] = None
 
 
 @dataclass
@@ -66,8 +66,8 @@ class Config:
             self.frameworks[key] = FrameworkConfig(
                 name=value['name'],
                 local_path=value['local_path'],
-                global_path=value['global_path'],
-                config_files=value.get('config_files', [])
+                config_files=value.get('config_files', []),
+                agent_markdown=value.get('agent_markdown')
             )
         
         # Parse defaults
@@ -109,11 +109,4 @@ class Config:
             raise ValueError(f"Unknown framework: {framework_name}")
         
         return project_path / framework.local_path
-    
-    def get_global_path(self, framework_name: str) -> Path:
-        """Get the global path for a framework."""
-        framework = self.get_framework(framework_name)
-        if not framework:
-            raise ValueError(f"Unknown framework: {framework_name}")
-        
-        return Path(framework.global_path).expanduser()
+
