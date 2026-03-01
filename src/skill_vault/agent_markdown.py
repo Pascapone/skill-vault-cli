@@ -1,6 +1,7 @@
 """Agent Markdown Symlink Setup for Skill Vault."""
 
 import os
+import sys
 import subprocess
 from pathlib import Path
 from rich.console import Console
@@ -10,7 +11,7 @@ from .config import Config
 console = Console()
 
 def elevate_command(cmd: str) -> None:
-    """Run a command in an elevated cmd.exe prompt (requires UAC)."""
+    """Run a command in an elevated cmd.exe prompt (requires UAC). Windows only."""
     # -Wait ensures we wait for the UAC prompt and execution to finish
     ps = f"Start-Process cmd.exe -Verb RunAs -Wait -ArgumentList '/c {cmd}'"
     subprocess.run(['powershell', '-Command', ps])
@@ -91,21 +92,17 @@ def setup_agent_markdown_symlinks(project_root: Path, enabled_frameworks: list[s
     if not links_to_create:
         return
 
-    # Build cmd chain for mklink
-    cmds = []
-    for link_path, target_path in links_to_create:
-        # mklink link target
-        cmd = f'mklink "{link_path}" "{target_path}"'
-        cmds.append(cmd)
-        
-    if cmds:
+    if sys.platform == 'win32':
+        # On Windows: use mklink via an elevated PowerShell prompt (requires UAC)
+        cmds = []
+        for link_path, target_path in links_to_create:
+            cmds.append(f'mklink "{link_path}" "{target_path}"')
+
         console.print("[blue]Creating markdown symlinks (Admin rights required)...[/blue]")
-        # Chain commands with &
         full_cmd = " & ".join(cmds)
         
         try:
             elevate_command(full_cmd)
-            
             # Verify creation
             for link_path, _ in links_to_create:
                 if link_path.exists() and link_path.is_symlink():
@@ -114,3 +111,11 @@ def setup_agent_markdown_symlinks(project_root: Path, enabled_frameworks: list[s
                     console.print(f"[red]x[/red] Failed to create symlink: {link_path.name}")
         except Exception as e:
             console.print(f"[red]Error during symlink creation: {e}[/red]")
+    else:
+        # On POSIX (Linux/macOS): os.symlink works without admin/root rights
+        for link_path, target_path in links_to_create:
+            try:
+                os.symlink(target_path, link_path)
+                console.print(f"[green]+[/green] {link_path.name} -> {source_file}")
+            except OSError as e:
+                console.print(f"[red]x[/red] Failed to create symlink {link_path.name}: {e}")
